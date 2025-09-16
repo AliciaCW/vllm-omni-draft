@@ -96,9 +96,21 @@ class QwenImageRunnerAdapter:
                 2, latents.shape[2:])
             latents = latents - residual
 
-        if not decode_pixels:
+        # Select output by mode
+        mode = inputs.output_mode
+        if mode == QwenImageCustomInputs.QwenImageOutputMode.LATENTS:
             return latents
 
-        # Decode to pixel space
-        decoded = self.vae.decode(latents)
-        return decoded
+        if mode == QwenImageCustomInputs.QwenImageOutputMode.PIXELS_AND_LATENTS:
+            pixels = self.vae.decode(latents)
+            # Convention: return pixels as primary; latents can be queried via a secondary path if needed
+            return pixels
+
+        if mode == QwenImageCustomInputs.QwenImageOutputMode.PIXELS_AND_MASK:
+            pixels = self.vae.decode(latents)
+            # Placeholder: mask derivation is pipeline-specific; for now return pixels
+            return pixels
+
+        # Default PIXELS
+        pixels = self.vae.decode(latents)
+        return pixels
