@@ -8,6 +8,7 @@ with text tokenization paths.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import List, Optional, Sequence, Tuple
 
 import torch
@@ -53,6 +54,21 @@ class QwenImageCustomInputs:
     control_image_latents: Optional[List[torch.Tensor]] = None
     img_shapes: Optional[Sequence[Tuple[int, int, int]]] = None
     txt_seq_lens: Optional[Sequence[int]] = None
+
+    # Task specification
+    class QwenImageTask(str, Enum):
+        T2I = "T2I"
+        I2I = "I2I"
+        TI2I = "TI2I"  # prompt + image edit
+
+    class QwenImageOutputMode(str, Enum):
+        PIXELS = "PIXELS"
+        LATENTS = "LATENTS"
+        PIXELS_AND_LATENTS = "PIXELS_AND_LATENTS"
+        PIXELS_AND_MASK = "PIXELS_AND_MASK"
+
+    task: QwenImageTask = QwenImageTask.T2I
+    output_mode: QwenImageOutputMode = QwenImageOutputMode.PIXELS
 
     # Generation parameters
     num_inference_steps: int = 30
