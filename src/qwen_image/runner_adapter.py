@@ -34,11 +34,15 @@ class QwenImageRunnerAdapter:
         vae: AutoencoderKLQwenImage,
         device: torch.device,
         dtype: torch.dtype,
+        worker: Optional[object] = None,
     ):
         self.transformer = transformer
         self.vae = vae
         self.device = device
         self.dtype = dtype
+        # Optional handles provided by worker when QWEN_VL_ENABLE=1
+        # If present, can compute embeddings on demand.
+        self.worker = worker
 
     @torch.inference_mode()
     def generate(
@@ -62,6 +66,46 @@ class QwenImageRunnerAdapter:
             1.0, 0.0, steps=num_steps, device=self.device)
         # typical diffusion step scale
         timesteps = (timesteps * 1000).to(torch.long)
+
+        # Prepare prompt embeddings; if missing and worker has Qwen2.5-VL, compute on the fly.
+        if inputs.prompt_embeds is None:
+            if self.worker is None or not hasattr(self.worker, "qwen_text_encoder") or self.worker.qwen_text_encoder is None:
+                raise ValueError(
+                    "prompt_embeds missing and Qwen2.5-VL not available on worker")
+            # Minimal inline embedding path; for edit we require raw image+processor
+            raw_prompt = getattr(inputs, "raw_prompt", None)
+            raw_image = getattr(inputs, "raw_image", None)
+            if raw_prompt is None:
+                raise ValueError(
+                    "raw_prompt required to compute embeddings on the fly")
+            if inputs.task == QwenImageCustomInputs.QwenImageTask.TI2I:
+                if self.worker.qwen_processor is None or raw_image is None:
+                    raise ValueError(
+                        "processor and raw_image required for edit embeddings")
+                proc_inputs = self.worker.qwen_processor(
+                    text=[raw_prompt], images=raw_image, padding=True, return_tensors="pt").to(self.device)
+                out = self.worker.qwen_text_encoder(
+                    input_ids=proc_inputs.input_ids,
+                    attention_mask=proc_inputs.attention_mask,
+                    pixel_values=proc_inputs.pixel_values,
+                    image_grid_thw=proc_inputs.image_grid_thw,
+                    output_hidden_states=True,
+                )
+                hidden = out.hidden_states[-1]
+                # simple mask-based gather to remove padding
+                mask = proc_inputs.attention_mask
+            else:
+                tok = self.worker.qwen_tokenizer(
+                    [raw_prompt], padding=True, truncation=True, return_tensors="pt").to(self.device)
+                out = self.worker.qwen_text_encoder(
+                    input_ids=tok.input_ids,
+                    attention_mask=tok.attention_mask,
+                    output_hidden_states=True,
+                )
+                hidden = out.hidden_states[-1]
+                mask = tok.attention_mask
+            inputs.prompt_embeds = hidden
+            inputs.prompt_embeds_mask = mask
 
         prompt_embeds = inputs.prompt_embeds.to(
             device=self.device, dtype=self.dtype)

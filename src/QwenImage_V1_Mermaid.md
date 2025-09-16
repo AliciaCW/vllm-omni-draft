@@ -12,6 +12,7 @@ sequenceDiagram
     participant WK as Worker (QwenImageWorker)
     participant MR as ModelRunner (V1)
     participant QA as QwenImageRunnerAdapter
+    participant QV as Qwen2.5-VL (text encoder)
     participant TM as QwenImageTransformer2DModel
     participant VAE as AutoencoderKLQwenImage
 
@@ -27,6 +28,10 @@ sequenceDiagram
         MR->>WK: request adapter
         WK-->>MR: get_qwen_image_adapter()
         MR->>QA: generate(custom_inputs)
+        alt embeddings missing & QWEN_VL_ENABLE=1
+          QA->>QV: encode(prompt[/image]) -> prompt_embeds, mask
+          QV-->>QA: prompt_embeds, mask
+        end
         QA->>TM: forward(..., timestep)
         TM-->>QA: residual
         QA->>QA: update latents (loop timesteps)
