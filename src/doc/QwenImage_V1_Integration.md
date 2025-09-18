@@ -19,7 +19,6 @@ This document explains the purpose of each file under `src/qwen_image/` and the 
 - `qwen_image/runner_adapter.py`
   - `QwenImageRunnerAdapter.generate(inputs: QwenImageCustomInputs, decode_pixels: bool = True) -> torch.Tensor`
   - Runs a minimal iterative refinement loop on `QwenImageTransformer2DModel` and optionally decodes latents to pixel space via `AutoencoderKLQwenImage`.
-  - If `prompt_embeds`/mask are missing and the worker provides Qwen2.5-VL (see below), computes embeddings on the fly from `raw_prompt` (and `raw_image` for edit).
   - Returns a tensor suitable for vLLM’s `PoolingOutput.data`.
 
 - `qwen_image/v1/executor.py`
@@ -27,15 +26,13 @@ This document explains the purpose of each file under `src/qwen_image/` and the 
 
 - `qwen_image/v1/worker.py`
   - `QwenImageWorker`: subclasses `vllm.v1.worker.gpu_worker.Worker` and lazily installs a `QwenImageRunnerAdapter` after model load.
-  - Optionally loads Qwen2.5-VL for embedding generation when `QWEN_VL_ENABLE=1` (configurable via `QWEN_VL_MODEL_ID`, `QWEN_VL_DTYPE`).
   - Exposes `get_qwen_image_adapter()` to fetch the adapter. The base worker remains responsible for device init, caching, parallel state, etc.
 
 ### Interface design
 
 - Request inputs (outside vLLM core)
-  - Build `QwenImageCustomInputs` using `qwen_image/processor.py` and attach it to your request payload under `CUSTOM_INPUTS_KEY`.
-  - Alternatively, provide `raw_prompt` (and `raw_image` for edit) and enable Qwen2.5-VL in worker to compute embeddings on the fly.
-  - The adapter requires (if precomputed):
+  - Build `QwenImageCustomInputs` using `qwen_image/processor.py` and attach it to your request payload (e.g., a side-car map) under `CUSTOM_INPUTS_KEY`.
+  - The adapter requires:
     - `prompt_embeds: [B, T_txt, D_txt]`, `prompt_embeds_mask: [B, T_txt]`
     - `image_latents`: 4D or 5D latent tensor depending on variant
     - Optional `control_image_latents`, `img_shapes: List[(F,H,W)]`, `txt_seq_lens: List[int]`
@@ -52,9 +49,9 @@ This document explains the purpose of each file under `src/qwen_image/` and the 
 
 ### Typical usage flow (high-level)
 
-1) Prepare inputs
-   - Precompute path: use `build_custom_inputs_text_only(...)` to get `QwenImageCustomInputs` and attach under `CUSTOM_INPUTS_KEY`.
-   - On-the-fly path: send `raw_prompt` (and `raw_image` for edit) in `QwenImageCustomInputs`, set `QWEN_VL_ENABLE=1`.
+1) Prepare inputs with Diffusers helpers
+   - Use `build_custom_inputs_text_only(...)` to get `QwenImageCustomInputs`.
+2) Attach `QwenImageCustomInputs` under `CUSTOM_INPUTS_KEY` to your request.
 3) Ensure the engine uses `QwenImageUniProcExecutor` (or set the worker class explicitly) before init.
 4) In the runner’s `IMAGE_GENERATION` branch, call the adapter and return `PoolingOutput`.
 
