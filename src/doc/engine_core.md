@@ -521,11 +521,17 @@ def process_outputs(self, engine_core_outputs: list[EngineCoreOutput], ...):
 # - Maintains request-specific state (tokens, logprobs, detokenizer, etc.)
 # - Converts EngineCoreOutput → RequestOutput/PoolingRequestOutput
 # - Manages request lifecycle from registration to completion
+AsyncLLM.add_request()
+↓
+OutputProcessor.add_request()
+↓
 RequestState.from_new_request() → 创建请求状态
+
+AsyncLLM.__init__() / AsyncLLM.generate() / AsyncLLM.encode() →  创建一个Background loop 持续从EngineCore获取输出
 ↓
 OutputProcessor.process_outputs() → 更新状态并处理输出
 ↓
-RequestState.make_request_output() → 转换为最终输出
+RequestState.make_request_output() → 转换为最终输出,格式为RequestOutput或者PoolingRequestOutput
 ↓
 RequestOutputCollector.put() → 推送到队列（AsyncLLM）
 ```
@@ -566,8 +572,9 @@ class RequestState:
         # Statistics
         self.stats = RequestStateStats(arrival_time=arrival_time) if log_stats else None
 ```
+### Key Methods - Lifecycle & Output Creation Methods
 
-### RequestState Lifecycle Methods
+####  RequestState Lifecycle Methods
 ```python
 @classmethod
 def from_new_request(cls, tokenizer: AnyTokenizer, request: EngineCoreRequest,
@@ -624,7 +631,7 @@ def make_request_output(self, new_token_ids: list[int],
     return self._new_request_output(self.request_id, outputs, finished, kv_transfer_params)
 ```
 
-### RequestState Output Creation Methods
+#### Output Creation Methods
 ```python
 def _new_pooling_output(self, pooling_output: torch.Tensor) -> PoolingOutput:
     """Create PoolingOutput for multimodal/pooling requests"""
@@ -656,9 +663,10 @@ def _new_request_output(self, request_id: str,
         kv_transfer_params=kv_transfer_params, num_cached_tokens=self.num_cached_tokens)
 ```
 
+### More about RequestState
 ### Integration Points for Multimodal Support
 ```python
-# RequestState.make_request_output() is where multimodal output handling happens:
+# Option 1: Do not change RequestState.make_request_output(), just edit RequestState._new_pooling_output to handle multimodal output
 def make_request_output(self, new_token_ids: list[int], 
                        pooling_output: Optional[torch.Tensor], ...):
     if pooling_output is not None:
@@ -671,7 +679,7 @@ def make_request_output(self, new_token_ids: list[int],
     output = self._new_completion_output(new_token_ids, finish_reason, stop_reason)
     # ... rest of text processing
 
-# Multimodal extension could add output type detection:
+# Option 2: Add output type detection based on multimodal extension. Extra methods: _new_image_request_output(), _new_multimodal_request_output()
 def make_request_output_multimodal(self, new_token_ids: list[int], 
                                  pooling_output: Optional[torch.Tensor], 
                                  output_type: Optional[str] = None, ...):
@@ -686,6 +694,101 @@ def make_request_output_multimodal(self, new_token_ids: list[int],
             # Standard pooling output
             return self._new_request_output(
                 self.request_id, [self._new_pooling_output(pooling_output)], finished)
+```
+### More about RequestState
+#### RequestState Deep-Dive: End-to-End Sequence
+```python
+# 0) Construction (registration time)
+# In OutputProcessor.add_request(...):
+req_state = RequestState.from_new_request(
+    tokenizer=tokenizer,
+    request=request,
+    prompt=prompt,
+    parent_req=parent_req,              # present when params.n > 1 (fan-out)
+    request_index=request_index,        # child index, used in outputs
+    queue=queue,                        # RequestOutputCollector for AsyncLLM
+    log_stats=self.log_stats,
+)
+self.request_states[request_id] = req_state
+self.lora_states.add_request(req_state)
+
+# 1) Runtime update per step (processing time)
+# In OutputProcessor.process_outputs(...): for each EngineCoreOutput
+req_state = self.request_states.get(req_id)
+req_state.num_cached_tokens = engine_core_output.num_cached_tokens
+req_state.is_prefilling = False
+
+# If text path, update detokenizer + logprobs
+if pooling_output is None:
+    stop_string = req_state.detokenizer.update(new_token_ids, ...)
+    req_state.logprobs_processor.update_from_output(engine_core_output)
+
+# 2) Turn EngineCoreOutput → RequestOutput/PoolingRequestOutput
+request_output = req_state.make_request_output(
+    new_token_ids, pooling_output, finish_reason, stop_reason, kv_transfer_params)
+
+# 3) Deliver to consumer
+if req_state.queue is not None:
+    # AsyncLLM: push to per-request queue (streaming to generate()/encode())
+    req_state.queue.put(request_output)
+else:
+    # LLMEngine: accumulate for synchronous return
+    request_outputs.append(request_output)
+
+# 4) Cleanup on finish
+if finish_reason is not None:
+    self.request_states.pop(req_id)
+    if req_state.parent_req and not req_state.parent_req.child_requests:
+        self.parent_requests.pop(req_state.parent_req.request_id, None)
+```
+
+#### What RequestState Tracks (and why)
+```bash
+- request_id / parent_req / request_index: 唯一标识与父子关系（n>1 扇出采样）
+- output_kind: 输出模式（DELTA/FINAL_ONLY），决定是否中间帧需要输出
+- prompt / prompt_token_ids / prompt_len: 构造最终 RequestOutput 所需上下文
+- detokenizer: 把 token 序列增量地转换为文本（文本路径）
+- logprobs_processor: 生成/累计每步 logprobs（文本路径）
+- max_tokens_param: 辅助统计/终止判断
+- is_prefilling / num_cached_tokens: 运行态信息（统计与控制）
+- queue: AsyncLLM 的输出通道（无则回落为同步返回模式）
+- stats: 录制时延/吞吐等指标
+```
+
+#### How RequestState Enables Both Text and Multimodal
+```python
+# Text path:
+if pooling_output is None:
+    # detokenize + logprobs
+    text = req_state.detokenizer.get_next_output_text(...)
+    # create CompletionOutput + RequestOutput
+
+# Multimodal path (images/latents/masks):
+if pooling_output is not None:
+    # bypass detokenizer/logprobs; directly wrap tensor
+    pooling = req_state._new_pooling_output(pooling_output)
+    request_output = PoolingRequestOutput(...)
+```
+
+#### Parent/Child Requests (params.n > 1)
+```python
+# Single logical user request → 多个子请求（不同采样分支）
+# RequestState 通过 parent_req 协调：
+request_id, outputs, finished = req_state.parent_req.get_outputs(
+    req_state.request_id, output)
+# 合并子输出，标记完成，减少重复返回
+```
+
+#### Where to Extend for Qwen-Image
+```python
+# 最小改造：保持 RequestState 不变
+# 由 GPUModelRunner 产出 pooling_output 图像张量
+# 由 Scheduler 填充 EngineCoreOutput.pooling_output
+# RequestState.make_request_output() 自动走 pooling 路径 → PoolingRequestOutput
+
+# 若采用 Option 1（扩展 EngineCoreOutput）：
+# 在 RequestState.make_request_output_multimodal(...) 读取 output_type
+# 根据 "image" / "text+image" / "latents" 做更细化的封装与后处理
 ```
 
 
