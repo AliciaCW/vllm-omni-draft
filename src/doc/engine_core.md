@@ -662,8 +662,6 @@ def _new_request_output(self, request_id: str,
         outputs=cast(list[CompletionOutput], outputs), finished=finished,
         kv_transfer_params=kv_transfer_params, num_cached_tokens=self.num_cached_tokens)
 ```
-
-### More about RequestState
 ### Integration Points for Multimodal Support
 ```python
 # Option 1: Do not change RequestState.make_request_output(), just edit RequestState._new_pooling_output to handle multimodal output
@@ -792,7 +790,7 @@ request_id, outputs, finished = req_state.parent_req.get_outputs(
 ```
 
 
-## Updates Needed for DiT/Qwen-Image (Interface-level)
+## (WIP) Updates Needed for DiT/Qwen-Image (Interface-level)
 ```python
 # Architecture: Dual EngineCore setup
 # 1) Text EngineCore: hosts Qwen2.5-VL for text/image encoding
