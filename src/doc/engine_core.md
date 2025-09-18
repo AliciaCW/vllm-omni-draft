@@ -206,7 +206,7 @@ async def _run_output_handler():
                 iteration_stats=iteration_stats)
 ```
 
-### Engine Output Data Type
+### Engine Core Output Data Type
 
 
 ```python
@@ -341,11 +341,18 @@ class ModelRunnerOutput:
 
 ```
 
-## Multimodal Output Support Analysis
+## Engine Core Analysis & Support to MultiModal
 
 ### Current vLLM V1 Output Structure
 ```python
 # Output flow: ModelRunnerOutput → EngineCoreOutput → EngineCoreOutputs 
+
+class ModelRunnerOutput:
+    # ...
+    sampled_token_ids: list[list[int]]
+    pooler_output: list[Optional[torch.Tensor]]
+
+# in vllm.v1.worker.gpu_model_runner:GPUModelRunner.excute_model() 1754:             pooler_output=[],
 
 class EngineCoreOutput:
     request_id: str
@@ -473,19 +480,213 @@ class OutputProcessor:
 # OutputProcessor.process_outputs() is where multimodal output handling happens:
 def process_outputs(self, engine_core_outputs: list[EngineCoreOutput], ...):
     for engine_core_output in engine_core_outputs:
-        # Check if this is a multimodal output
-        if engine_core_output.pooling_output is not None:
-            # Handle image/multimodal output
-            if self._is_image_output(engine_core_output):
-                self._process_image_output(engine_core_output)
-            else:
-                # Standard pooling output
-                self._process_pooling_output(engine_core_output)
+        # Option 1: Use output_type field (if EngineCoreOutput is extended)
+        if engine_core_output.output_type == "image":
+            self._process_image_output(engine_core_output)
+        elif engine_core_output.output_type == "text+image":
+            self._process_text_image_output(engine_core_output)
+        elif engine_core_output.output_type == "latents":
+            self._process_latents_output(engine_core_output)
+        elif engine_core_output.output_type == "text":
+            self._process_text_output(engine_core_output)
         else:
-            # Standard text output
+            # Fallback: use existing pooling_output logic
+            if engine_core_output.pooling_output is not None:
+                self._process_pooling_output(engine_core_output)
+            else:
+                self._process_text_output(engine_core_output)
+
+# Option 2: Completely reuse existing path (no output_type field)
+def process_outputs(self, engine_core_outputs: list[EngineCoreOutput], ...):
+    for engine_core_output in engine_core_outputs:
+        # Determine output type by checking field combinations
+        if engine_core_output.pooling_output is not None and len(engine_core_output.new_token_ids) == 0:
+            # Image generation: pooling_output exists, no text tokens
+            self._process_image_output(engine_core_output)
+        elif engine_core_output.pooling_output is not None and len(engine_core_output.new_token_ids) > 0:
+            # Text + Image: both pooling_output and text tokens exist
+            self._process_text_image_output(engine_core_output)
+        elif engine_core_output.pooling_output is not None:
+            # Standard pooling output
+            self._process_pooling_output(engine_core_output)
+        else:
+            # Text generation only
             self._process_text_output(engine_core_output)
 ```
+## RequestState Integration in OutputProcessor
 
+### RequestState Role and Usage
+```bash
+# RequestState serves as the per-request state tracker in OutputProcessor:
+# - Maintains request-specific state (tokens, logprobs, detokenizer, etc.)
+# - Converts EngineCoreOutput → RequestOutput/PoolingRequestOutput
+# - Manages request lifecycle from registration to completion
+RequestState.from_new_request() → 创建请求状态
+↓
+OutputProcessor.process_outputs() → 更新状态并处理输出
+↓
+RequestState.make_request_output() → 转换为最终输出
+↓
+RequestOutputCollector.put() → 推送到队列（AsyncLLM）
+```
+
+### RequestState Key Components
+```python
+class RequestState:
+    def __init__(self, request_id: str, parent_req: Optional[ParentRequest], 
+                 request_index: int, lora_name: Optional[str],
+                 output_kind: RequestOutputKind, prompt: Optional[str],
+                 prompt_token_ids: list[int], logprobs_processor: Optional[LogprobsProcessor],
+                 detokenizer: Optional[IncrementalDetokenizer], 
+                 max_tokens_param: Optional[int], arrival_time: float,
+                 queue: Optional[RequestOutputCollector], log_stats: bool):
+        
+        # Core request identification
+        self.request_id = request_id
+        self.parent_req = parent_req
+        self.request_index = request_index
+        self.lora_name = lora_name
+        
+        # Output configuration
+        self.output_kind = output_kind  # DELTA, FINAL_ONLY, etc.
+        self.prompt = prompt
+        self.prompt_token_ids = prompt_token_ids
+        self.prompt_len = len(prompt_token_ids)
+        
+        # Processing components
+        self.logprobs_processor = logprobs_processor  # Handles logprobs computation
+        self.detokenizer = detokenizer  # Converts tokens to text
+        self.max_tokens_param = max_tokens_param
+        
+        # State tracking
+        self.is_prefilling = True  # Whether still in prefill phase
+        self.queue = queue  # AsyncLLM queue for streaming
+        self.num_cached_tokens = 0
+        
+        # Statistics
+        self.stats = RequestStateStats(arrival_time=arrival_time) if log_stats else None
+```
+
+### RequestState Lifecycle Methods
+```python
+@classmethod
+def from_new_request(cls, tokenizer: AnyTokenizer, request: EngineCoreRequest,
+                    prompt: Optional[str], parent_req: Optional[ParentRequest],
+                    request_index: int, queue: Optional[RequestOutputCollector],
+                    log_stats: bool) -> "RequestState":
+    """Factory method to create RequestState from EngineCoreRequest"""
+    
+    # Determine output kind and processing components based on request type
+    if sampling_params := request.sampling_params:
+        # Text generation request
+        output_kind = sampling_params.output_kind
+        logprobs_processor = LogprobsProcessor.from_new_request(tokenizer, request)
+        detokenizer = IncrementalDetokenizer.from_new_request(tokenizer, request)
+        max_tokens_param = sampling_params.max_tokens
+    else:
+        # Pooling request
+        assert request.pooling_params is not None
+        output_kind = request.pooling_params.output_kind
+        logprobs_processor = None
+        detokenizer = None
+        max_tokens_param = None
+
+def make_request_output(self, new_token_ids: list[int], 
+                       pooling_output: Optional[torch.Tensor],
+                       finish_reason: Optional[FinishReason],
+                       stop_reason: Union[int, str, None],
+                       kv_transfer_params: Optional[dict[str, Any]] = None) -> 
+                       Optional[Union[RequestOutput, PoolingRequestOutput]]:
+    """Convert EngineCoreOutput data into RequestOutput/PoolingRequestOutput"""
+    
+    finished = finish_reason is not None
+    final_only = self.output_kind == RequestOutputKind.FINAL_ONLY
+    
+    if not finished and final_only:
+        return None  # Only return final output in FINAL_ONLY mode
+    
+    if pooling_output is not None:
+        # Handle pooling/multimodal output
+        return self._new_request_output(
+            self.request_id, [self._new_pooling_output(pooling_output)], finished)
+    
+    # Handle text completion output
+    output = self._new_completion_output(new_token_ids, finish_reason, stop_reason)
+    
+    # Handle parent-child request relationships (for n>1 sampling)
+    if self.parent_req is None:
+        outputs = [output]
+    else:
+        request_id, outputs, finished = self.parent_req.get_outputs(self.request_id, output)
+        if not outputs:
+            return None
+    
+    return self._new_request_output(self.request_id, outputs, finished, kv_transfer_params)
+```
+
+### RequestState Output Creation Methods
+```python
+def _new_pooling_output(self, pooling_output: torch.Tensor) -> PoolingOutput:
+    """Create PoolingOutput for multimodal/pooling requests"""
+    return PoolingOutput(data=pooling_output)
+
+def _new_request_output(self, request_id: str, 
+                       outputs: Union[list[CompletionOutput], list[PoolingOutput]],
+                       finished: bool, kv_transfer_params: Optional[dict[str, Any]] = None) -> 
+                       Union[RequestOutput, PoolingRequestOutput]:
+    """Create final RequestOutput or PoolingRequestOutput"""
+    
+    first_output = outputs[0]
+    if isinstance(first_output, PoolingOutput):
+        # Multimodal/pooling output
+        return PoolingRequestOutput(
+            request_id=request_id, outputs=first_output,
+            prompt_token_ids=self.prompt_token_ids, finished=finished)
+    
+    # Text completion output
+    if self.output_kind == RequestOutputKind.DELTA:
+        prompt_logprobs = self.logprobs_processor.pop_prompt_logprobs()
+    else:
+        prompt_logprobs = self.logprobs_processor.prompt_logprobs
+    
+    return RequestOutput(
+        request_id=request_id, prompt=self.prompt,
+        prompt_token_ids=self.prompt_token_ids, prompt_logprobs=prompt_logprobs,
+        outputs=cast(list[CompletionOutput], outputs), finished=finished,
+        kv_transfer_params=kv_transfer_params, num_cached_tokens=self.num_cached_tokens)
+```
+
+### Integration Points for Multimodal Support
+```python
+# RequestState.make_request_output() is where multimodal output handling happens:
+def make_request_output(self, new_token_ids: list[int], 
+                       pooling_output: Optional[torch.Tensor], ...):
+    if pooling_output is not None:
+        # This is where multimodal outputs are handled
+        # For Qwen-Image: pooling_output contains image tensor
+        return self._new_request_output(
+            self.request_id, [self._new_pooling_output(pooling_output)], finished)
+    
+    # Standard text completion path
+    output = self._new_completion_output(new_token_ids, finish_reason, stop_reason)
+    # ... rest of text processing
+
+# Multimodal extension could add output type detection:
+def make_request_output_multimodal(self, new_token_ids: list[int], 
+                                 pooling_output: Optional[torch.Tensor], 
+                                 output_type: Optional[str] = None, ...):
+    if pooling_output is not None:
+        if output_type == "image":
+            # Handle image generation output
+            return self._new_image_request_output(pooling_output, finished)
+        elif output_type == "text+image":
+            # Handle combined text + image output
+            return self._new_multimodal_request_output(new_token_ids, pooling_output, finished)
+        else:
+            # Standard pooling output
+            return self._new_request_output(
+                self.request_id, [self._new_pooling_output(pooling_output)], finished)
+```
 
 
 ## Updates Needed for DiT/Qwen-Image (Interface-level)
