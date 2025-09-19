@@ -119,8 +119,9 @@ Data parallel specifics (DPEngineCoreProc):
 1) Request ingestion (via AsyncLLM/LLMEngine + Processor + EngineCoreClient)
 
 ```
-Client -> AsyncLLM.add_request(request_id, prompt, params, ...)
-             ↓
+API Server → AsyncLLM.generate() 
+            ↓ AsyncLLM.add_request(request_id, prompt, params, ...)
+            ↓
           Processor.process_inputs(
               request_id, prompt, params, ...)
             # returns (prompt_str, EngineCoreRequest)

@@ -513,6 +513,50 @@ def process_outputs(self, engine_core_outputs: list[EngineCoreOutput], ...):
             # Text generation only
             self._process_text_output(engine_core_output)
 ```
+
+## Queue for Request
+
+### Pipeline
+
+```bash
+RelatedFiles:
+vllm/vllm/entrypoints/openai/serving_engine.py
+vllm/vllm/v1/engine/async_llm.py
+vllm/vllm/v1/engine/output_processor.py
+```
+
+Create RequestOutputCollector:
+
+```bash
+1. HTTP Request → FastAPI endpoint 
+2. serving_engine.py → OpenAIServing.engine_client.generate()/encode()
+3. AsyncLLM.generate()/encode() → await self.add_request()
+4. AsyncLLM.add_request() → 返回 RequestOutputCollector
+    4.1 AsyncLLM.output_processor.add_request(request, prompt, parent_req, index, queue)
+    4.2 OutputProcessor.request_states[request_id] = RequestState(request, prompt, parent_req, index, queue)
+5. AsyncLLM.generate()/encode() → get result from RequestOutputCollector
+6. serving_engine.py  async for res in generator: yied ... -> Streaming return to Clinet 
+```
+
+
+More about Step 5 (Produce & Consume):
+```bash
+# In background process, called by AsyncLLM.__init__()/generate()/encode()
+# Produce
+AsyncLLM._run_output_handler()
+↓
+OutputProcessor.process_outputs()
+↓
+OutputProcessor.request_states.get(req_id).queue.put(request_output)  # 推送到队列
+
+# Consume
+AsyncLLM.generate()/encode()
+↓
+out = q.get_nowait() or await q.get()  # 从同一个队列获取
+yied out
+```
+   
+
 ## RequestState Integration in OutputProcessor
 
 ### RequestState Role and Usage
