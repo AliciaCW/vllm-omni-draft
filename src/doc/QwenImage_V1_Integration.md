@@ -31,7 +31,7 @@ This document explains the purpose of each file under `src/qwen_image/` and the 
 ### Interface design
 
 - Request inputs (outside vLLM core)
-  - Build `QwenImageCustomInputs` using `qwen_image/processor.py` and attach it to your request payload (e.g., a side-car map) under `CUSTOM_INPUTS_KEY`.
+  - Build `QwenImageCustomInputs` using `qwen_image/processor.py` and attach it to the request payload (e.g., a side-car map) under `CUSTOM_INPUTS_KEY`.
   - The adapter requires:
     - `prompt_embeds: [B, T_txt, D_txt]`, `prompt_embeds_mask: [B, T_txt]`
     - `image_latents`: 4D or 5D latent tensor depending on variant
@@ -39,7 +39,7 @@ This document explains the purpose of each file under `src/qwen_image/` and the 
     - `num_inference_steps`, `guidance_scale`, `seed` (optional), `height/width` (optional)
 
 - Model execution path (inside vLLM V1)
-  - In your V1 model runner branch for `TASK_IMAGE_GENERATION`:
+  - In the V1 model runner branch for `TASK_IMAGE_GENERATION`:
     1) Retrieve the worker’s adapter: `adapter = worker.get_qwen_image_adapter()`
     2) Call `adapter.generate(custom_inputs, decode_pixels=True)`
     3) Place the result into `ModelRunnerOutput.pooling_output`
@@ -51,12 +51,12 @@ This document explains the purpose of each file under `src/qwen_image/` and the 
 
 1) Prepare inputs with Diffusers helpers
    - Use `build_custom_inputs_text_only(...)` to get `QwenImageCustomInputs`.
-2) Attach `QwenImageCustomInputs` under `CUSTOM_INPUTS_KEY` to your request.
+2) Attach `QwenImageCustomInputs` under `CUSTOM_INPUTS_KEY` to the request.
 3) Ensure the engine uses `QwenImageUniProcExecutor` (or set the worker class explicitly) before init.
 4) In the runner’s `IMAGE_GENERATION` branch, call the adapter and return `PoolingOutput`.
 
 Notes
-- This integration avoids altering vLLM V1 internals; only minimal branching in your runner/processor is required to consume `QwenImageCustomInputs` and to emit pooling outputs.
+- This integration avoids altering vLLM V1 internals; only minimal branching in the runner/processor is required to consume `QwenImageCustomInputs` and to emit pooling outputs.
 - For production, replace the placeholder refinement schedule in `runner_adapter.py` with the scheduler that matches Qwen-Image defaults.
 
 ---

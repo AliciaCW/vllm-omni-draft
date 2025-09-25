@@ -155,7 +155,7 @@ Final latents -> VAE.decode -> pixels -> (apply mask overlay if inpaint) -> Outp
 
 - Prefer modular pipeline blocks (encoders.py, denoise.py, decoders.py) to assemble inputs/loops.
 - Keep shapes and dtype consistent; pass `img_shapes` and `txt_seq_lens` when using RoPE.
-- For multi-outputs (pixels, latents, masks), define explicit conventions in your adapter or output schema.
+- For multi-outputs (pixels, latents, masks), define explicit conventions in the adapter or output schema.
 
 ---
 
