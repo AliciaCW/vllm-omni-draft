@@ -1,15 +1,18 @@
 # Comparing the Original Qwen-Image with vLLM + Qwen-Image
 
-TTFT, time to first token
-TPOT, time per output token
-E2ET, end to end latency
+## Benchmarks we care
+batch size, seq len
 
-## Original Qwen-Image
+TTFT, Time to First Token
 
-Using diffuser 
+TPOT, Time Per Output Token
 
+E2ET, End-to-End Latency
+
+more: Throughput, req/s tok/s
 
 ## vLLM + Qwen-Image
+[images/arch.png](!images/arch.png)
 
 There are three major components in Qwen-Image,
 
@@ -17,11 +20,21 @@ There are three major components in Qwen-Image,
 - Qwen Image Transformer 2D Model: dit
 - AutoencoderKLQwenImage: vae
 
-Tests on Qwen 2.5 VL:
+Tests on Qwen 2.5 VL: using vLLM backend
 
-Tests on Qwen Image Transformer 2D Model:
+Tests on Qwen Image Transformer 2D Model and AutoencoderKL: using diffuser
 
-Maybe Tests on AutoencoderKL:
+## Datasets & Model Weight
+
+From the Qwen-Image paper:
+
+    general image generation: GenEval, DPG, OneIG-Bench 
+    image editing: GEdit, ImgEdit, and GSO
+
+Here we select ImageEdit for our test.
+
+Weight: https://huggingface.co/Qwen/Qwen-Image-Edit
+
 
 
 ### edit locations:
