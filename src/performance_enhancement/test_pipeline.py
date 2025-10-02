@@ -17,17 +17,12 @@ llm = LLM(
     limit_mm_per_prompt={"image": 1}
 )
 
-# Refer to the HuggingFace repo for the correct format to use
 prompt = "USER: <image>\nWhat is the content of this image?\nASSISTANT:"
-
-# Load the image using PIL.Image
-image = PIL.Image.open(...)
-
 
 # Batch inference
 image_1 = PIL.Image.open(...)
 image_2 = PIL.Image.open(...)
-outputs = llm.generate(
+outputs = llm.embed(
     [
         {
             "prompt": "USER: <image>\nWhat is the content of this image?\nASSISTANT:",
@@ -40,15 +35,15 @@ outputs = llm.generate(
     ]
 )
 
-# TODO: need to get prompt_embeds from vllm
-for o in outputs:
-    generated_text = o.outputs[0].text
-    print(generated_text)
+# # TODO: need to check prompt_embeds from vllm
+# for o in outputs:
+#     prompt_embeds = o.outputs[0].text
+#     print(prompt_embeds)
 
-# from vllm/examples/offline_inference/basic/chat.py
-outputs = llm.chat(messages)
-prompt_embeds = outputs[0].outputs[0].text
 
+# # # from vllm/examples/offline_inference/basic/chat.py
+# # outputs = llm.chat(messages)
+# # prompt_embeds = outputs[0].outputs[0].text
 
 # step 2. run qwen image transformer 2d model and autoencoderkl with diffuser
 # Qwen-Image/src/examples/edit_demo.py
@@ -62,13 +57,13 @@ pipe = QwenImageEditPipeline.from_pretrained(
 def infer(
     image,
     prompt: Union[str, List[str]] = None,
-    seed=42,
+    prompt_embeds: Optional[torch.Tensor] = None
+    seed = 42,
     randomize_seed=False,
     true_guidance_scale=1.0,
     num_inference_steps=50,
     rewrite_prompt=True,
     num_images_per_prompt=1,
-    prompt_embeds: Optional[torch.Tensor] = None
 ):
     """
     Generates an image using the local Qwen-Image diffusers pipeline.
@@ -103,3 +98,8 @@ def infer(
     ).images
 
     return image, seed
+
+
+prompt_embeds = outputs[0].outputs[0].text
+print(prompt_embeds)
+infer(image_1, prompt_embeds=prompt_embeds)

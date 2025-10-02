@@ -3,6 +3,8 @@
 ## Benchmarks we care
 batch size, seq len
 
+memory
+
 TTFT, Time to First Token
 
 TPOT, Time Per Output Token
@@ -31,10 +33,24 @@ From the Qwen-Image paper:
     general image generation: GenEval, DPG, OneIG-Bench 
     image editing: GEdit, ImgEdit, and GSO
 
-Here we select ImageEdit for our test.
+Here we select ImageEdit for our test, to more specifically, we choose removal subtask (belongs to single turn task) with Parquet/remove_part0.parquet and Singleturn/remove_part0.tar* data.
+
+Download dataset:
+
+```bash
+huggingface-cli download --repo-type dataset \
+    sysuyy/ImgEdit \
+    --include "Parquet/remove_part0.parquet" \
+    --include "Singleturn/results_remove_part0.tar*" \
+    --local-dir ./imgedit_data
+```
 
 Weight: https://huggingface.co/Qwen/Qwen-Image-Edit
+Download model weight:
 
+```bash
+huggingface-cli download Qwen/Qwen-Image-Edit
+```
 
 
 ### edit locations:
