@@ -73,7 +73,7 @@ def bench_vllm_mm_offline(llm: LLM, batch_size: int, seq_len: int):
     sync()
     reset_peak()
     t0 = time.perf_counter()
-    outputs = llm.generate(requests, sampling)
+    outputs = llm.embed(requests, sampling)
     sync()
     t1 = time.perf_counter()
 
@@ -149,19 +149,6 @@ def main():
             # Comment-in below line only when ImageEdit removal data is ready
             # r2 = bench_diffusers_edit(pipe, bs, sl)
             # print(r2)
-
-
-if __name__ == "__main__":
-    main()
-
-# -----------------------------
-# Main
-# -----------------------------
-
-
-def main():
-    # vLLM (offline)
-    llm = LLM(model=MODEL_VL, enforce_eager=True)
 
 
 if __name__ == "__main__":

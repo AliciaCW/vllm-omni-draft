@@ -1,8 +1,11 @@
-from diffusers import QwenImageEditPipeline
-import numpy as np
-import random
+from vllm import LLM
 import torch
-
+import random
+import numpy as np
+from diffusers import QwenImageEditPipeline
+import os
+import sys
+import PIL
 
 # step 0. pre process data （ImageEdit dataset)
 # TODO
@@ -10,18 +13,23 @@ import torch
 # step 1. run qwen 2.5 vl with vllm backend (offline)
 # vllm/examples/offline_inference/vision_language.py
 
-from vllm import LLM
 
+# Qwen/Qwen2.5-VL-7B-Instruct,
 llm = LLM(
     model="Qwen/Qwen2.5-VL-3B-Instruct",
-    limit_mm_per_prompt={"image": 1}
+    limit_mm_per_prompt={"image": 1},
+    max_num_batched_tokens=4096,
+    max_model_len=4096,
+    enforce_eager=True
 )
 
 prompt = "USER: <image>\nWhat is the content of this image?\nASSISTANT:"
 
 # Batch inference
-image_1 = PIL.Image.open(...)
-image_2 = PIL.Image.open(...)
+img_dir = "/Users/congwang/Documents/codes/M/img"
+image_1 = PIL.Image.open(os.path.join(img_dir, "test_image.jpg"))
+image_2 = PIL.Image.open(os.path.join(img_dir, "test_image2.jpg"))
+
 outputs = llm.embed(
     [
         {
@@ -36,14 +44,10 @@ outputs = llm.embed(
 )
 
 # # TODO: need to check prompt_embeds from vllm
-# for o in outputs:
-#     prompt_embeds = o.outputs[0].text
-#     print(prompt_embeds)
+for o in outputs:
+    prompt_embeds = o.outputs[0].text
+    print(type(prompt_embeds))
 
-
-# # # from vllm/examples/offline_inference/basic/chat.py
-# # outputs = llm.chat(messages)
-# # prompt_embeds = outputs[0].outputs[0].text
 
 # step 2. run qwen image transformer 2d model and autoencoderkl with diffuser
 # Qwen-Image/src/examples/edit_demo.py
@@ -51,7 +55,7 @@ outputs = llm.embed(
 MAX_SEED = np.iinfo(np.int32).max
 
 pipe = QwenImageEditPipeline.from_pretrained(
-    "Qwen/Qwen-Image-Edit", torch_dtype=dtype).to(device)
+    "Qwen/Qwen-Image-Edit", torch_dtype=torch.bfloat16).to(device)
 
 
 def infer(
@@ -87,15 +91,26 @@ def infer(
         print(f"Rewrite prompt is not implemented")
 
         # Generate the image
-    image = pipe(
-        image,
-        prompt_embeds=prompt_embeds,  # edit prompt -> prompt_embeds
-        negative_prompt=negative_prompt,
-        num_inference_steps=num_inference_steps,
-        generator=generator,
-        true_cfg_scale=true_guidance_scale,
-        num_images_per_prompt=num_images_per_prompt
-    ).images
+    if prompt_embeds is not None:
+        image = pipe(
+            image,
+            prompt_embeds=prompt_embeds,  # edit prompt -> prompt_embeds
+            negative_prompt=negative_prompt,
+            num_inference_steps=num_inference_steps,
+            generator=generator,
+            true_cfg_scale=true_guidance_scale,
+            num_images_per_prompt=num_images_per_prompt
+        ).images
+    else:
+        image = pipe(
+            image,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            num_inference_steps=num_inference_steps,
+            generator=generator,
+            true_cfg_scale=true_guidance_scale,
+            num_images_per_prompt=num_images_per_prompt
+        ).images
 
     return image, seed
 
