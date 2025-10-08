@@ -10,13 +10,18 @@ from PIL import Image
 
 from diffusers import QwenImageEditPipeline
 
-RUN_VLLM_DIFFUSERS_TEST = 0
-RUN_DIFFUSERS_TEST = 1
+RUN_DIFFUSERS_TEST = os.environ.get("RUN_DIFFUSERS_TEST") if os.environ.get(
+    "RUN_DIFFUSERS_TEST") else 0
+RUN_VLLM_DIFFUSERS_TEST = os.environ.get("RUN_VLLM_DIFFUSERS_TEST") if os.environ.get(
+    "RUN_VLLM_DIFFUSERS_TEST") else 0
+if RUN_DIFFUSERS_TEST == 0 and RUN_VLLM_DIFFUSERS_TEST == 0:
+    RUN_DIFFUSERS_TEST = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float16 if torch.cuda.is_available() else torch.float32
 MODEL_VL = "Qwen/Qwen2.5-VL-8B-Instruct"
 MODEL_EDIT = "Qwen/Qwen-Image-Edit"
-DATA_DIR = "/Users/congwang/Documents/dataset/imgedit_data/Benchmark/singleturn"
+DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
+    "DATA_DIR") else "/home/dyvm6xra/dyvm6xrauser08/alicia/data/imgedit_data/Benchmark/singleturn"
 # BATCH_SIZES = [1, 2, 4]
 # SEQ_LENS = [32, 128, 512, 1024]
 BATCH_SIZES = [2]
@@ -64,6 +69,7 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
     if os.path.isfile(json_path):
         with open(json_path, "r") as f:
             data = json.load(f)
+        i = 0
         for _, item in data.items():
             img_path = item.get("id")
             full_path = os.path.join(data_dir, img_path)
