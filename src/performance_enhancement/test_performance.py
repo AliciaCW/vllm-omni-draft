@@ -321,11 +321,17 @@ def main():
         pipe = pipe.to(DEVICE)
         print(f"[main] diffusers pipe loaded | device={DEVICE}")
 
+        results = []
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
-                for res in bench_diffusers_edit(pipe, bs, sl):
-                    print(res)
-                    print("-" * 100)
+                for run_idx in range(RUNS):
+                    for res in bench_diffusers_edit(pipe, bs, sl):
+                        print(res)
+                        print("-" * 100)
+                        print({**res, "run": run_idx + 1})
+                        results.append({**res, "run": run_idx + 1})
+
+        print(results)
 
     if RUN_VLLM_DIFFUSERS_TEST:
         from vllm import LLM
@@ -350,11 +356,8 @@ def main():
                 results = []
                 for run_idx in range(RUNS):
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
+                        print({**v_res, "run": run_idx + 1})
                         results.append({"vllm": v_res, "diff": d_res})
-
-                print(results)
-                print({**v_res, "run": run_idx + 1})
-                print({**d_res, "run": run_idx + 1})
 
                 # aggregate simple averages
                 if results:
