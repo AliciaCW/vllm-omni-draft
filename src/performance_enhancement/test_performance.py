@@ -17,7 +17,7 @@ RUN_VLLM_DIFFUSERS_TEST = os.environ.get("RUN_VLLM_DIFFUSERS_TEST") if os.enviro
 if RUN_DIFFUSERS_TEST == 0 and RUN_VLLM_DIFFUSERS_TEST == 0:
     RUN_DIFFUSERS_TEST = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-DTYPE = torch.float16 if torch.cuda.is_available() else torch.float32
+DTYPE = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 MODEL_VL = "Qwen/Qwen2.5-VL-7B-Instruct"
 MODEL_EDIT = "Qwen/Qwen-Image-Edit"
 DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
@@ -44,7 +44,7 @@ def reset_peak():
         torch.cuda.reset_peak_memory_stats()
 
 
-def peak_mb() -> float:
+def cal_peak_mb() -> float:
     if not torch.cuda.is_available():
         return 0.0
     return torch.cuda.max_memory_allocated() / 1024 ** 2
@@ -120,7 +120,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
         print("[bench_vllm_and_diffusers] llm.chat done")
 
         vllm_e2et = t1 - t0
-        vllm_mem = peak_mb()
+        vllm_mem = cal_peak_mb()
         gen_tokens = [len(o.outputs[0].token_ids) for o in outputs]
         avg_gen = sum(gen_tokens) / max(1, len(gen_tokens))
         approx_tpot = vllm_e2et / max(1.0, (avg_gen - 1.0))
@@ -162,7 +162,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
         t1 = time.perf_counter()
 
         diff_e2et = t1 - t0
-        diff_mem = peak_mb()
+        diff_mem = cal_peak_mb()
 
         diffusers_result = {
             "phase": "diffusers_edit",
@@ -203,7 +203,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 #     t1 = time.perf_counter()
 
 #     e2et = t1 - t0
-#     mem = peak_mb()
+#     mem = cal_peak_mb()
 #     gen_tokens = [len(o.outputs[0].token_ids) for o in outputs]
 #     avg_gen = sum(gen_tokens) / max(1, len(gen_tokens))
 #     approx_tpot = e2et / max(1.0, (avg_gen - 1.0))
@@ -252,7 +252,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 #     t1 = time.perf_counter()
 
 #     e2et = t1 - t0
-#     peak_mb = peak_mb()
+#     peak_mb = cal_peak_mb()
 
 #     return {
 #         "phase": "diffusers_edit",
@@ -295,7 +295,7 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
         print("[bench_diffusers_edit] pipe(...) done")
 
         e2et = t1 - t0
-        peak_mb = peak_mb()
+        peak_mb = cal_peak_mb()
         print(
             f"[bench_diffusers_edit] metrics | e2e={e2et:.3f}s, peakMB={peak_mb:.1f}")
 
@@ -316,7 +316,8 @@ def main():
     print("Running  test")
 
     if RUN_DIFFUSERS_TEST:
-        pipe = QwenImageEditPipeline.from_pretrained(MODEL_EDIT, dtype=DTYPE)
+        pipe = QwenImageEditPipeline.from_pretrained(
+            MODEL_EDIT, torch_dtype=DTYPE)
         pipe = pipe.to(DEVICE)
         print(f"[main] diffusers pipe loaded | device={DEVICE}")
 
@@ -333,9 +334,10 @@ def main():
             limit_mm_per_prompt={"image": 1},
             enforce_eager=True,
         )
-        pipe = QwenImageEditPipeline.from_pretrained(
-            MODEL_EDIT, torch_dtype=DTYPE)
-        pipe = pipe.to(DEVICE)
+        # pipe = QwenImageEditPipeline.from_pretrained(
+        #     MODEL_EDIT, torch_dtype=DTYPE)
+        # pipe = pipe.to(DEVICE)
+        pipe = None
 
         # run vllm + diffusers
         for bs in BATCH_SIZES:
