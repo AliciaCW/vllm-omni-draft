@@ -81,10 +81,15 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
 
 
 def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
+    print(
+        f"[bench_vllm_and_diffusers] start | batch_size={batch_size} seq_len={seq_len}")
     # vLLM benchmark (MM chat)
     for images, prompts, edit_types in load_images(batch_size):
+        print(
+            f"[bench_vllm_and_diffusers] loaded images/prompts | n={len(images)}")
         rewrite_prompts = [extend_prompts(prompt, edit_type, seq_len)
                            for prompt, edit_type in zip(prompts, edit_types)]
+        print("[bench_vllm_and_diffusers] prompts extended")
 
         requests = [{
             "role": "user",
@@ -93,6 +98,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
                 {"type": "text", "text": rewrite_prompts[i]},
             ],
         } for i in range(batch_size)]
+        print("[bench_vllm_and_diffusers] vLLM requests built")
 
         sampling = llm.get_default_sampling_params()
         sampling.max_tokens = MAX_NEW_TOKENS
@@ -100,10 +106,12 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 
         sync()
         reset_peak()
+        print("[bench_vllm_and_diffusers] calling llm.chat ...")
         t0 = time.perf_counter()
         outputs = llm.chat(requests, sampling, use_tqdm=True)
         sync()
         t1 = time.perf_counter()
+        print("[bench_vllm_and_diffusers] llm.chat done")
 
         vllm_e2et = t1 - t0
         vllm_mem = peak_mb()
@@ -115,6 +123,8 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
         throughput_tokens_per_s = total_new_tokens / max(vllm_e2et, 1e-6)
         throughput_tokens_per_s_per_req = throughput_tokens_per_s / \
             max(batch_size, 1)
+        print(
+            f"[bench_vllm_and_diffusers] vLLM metrics | e2e={vllm_e2et:.3f}s, tps={throughput_tokens_per_s:.2f}")
 
         vllm_result = {
             "phase": "vllm_mm_offline",
@@ -158,6 +168,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 
         yield vllm_result, diffusers_result
         '''
+        print("[bench_vllm_and_diffusers] skipping diffusers in this path (commented). yielding vLLM only")
         yield vllm_result, None
 
 
@@ -249,8 +260,11 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
     # Build text prompts (seq_len control) + open the same image N times for a batch
     for images, prompts, edit_types in load_images(batch_size):
+        print(
+            f"[bench_diffusers_edit] loaded images/prompts | n={len(images)}")
         rewrite_prompts = [extend_prompts(prompt, edit_type, seq_len)
                            for prompt, edit_type in zip(prompts, edit_types)]
+        print("[bench_diffusers_edit] prompts extended")
 
         gen_kwargs = {
             "image": images,
@@ -261,13 +275,17 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
 
         sync()
         reset_peak()
+        print("[bench_diffusers_edit] calling pipe(...) ...")
         t0 = time.perf_counter()
         _ = pipe(**gen_kwargs).images
         sync()
         t1 = time.perf_counter()
+        print("[bench_diffusers_edit] pipe(...) done")
 
         e2et = t1 - t0
         peak_mb = peak_mb()
+        print(
+            f"[bench_diffusers_edit] metrics | e2e={e2et:.3f}s, peakMB={peak_mb:.1f}")
 
         yield {
             "phase": "diffusers_edit",
@@ -280,14 +298,17 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
 
 def main():
 
-    pipe = QwenImageEditPipeline.from_pretrained(MODEL_EDIT, torch_dtype=DTYPE)
-    pipe = pipe.to(DEVICE)
     # run diffusers first
 
     print("-" * 100)
     print("Running  test")
 
     if RUN_DIFFUSERS_TEST:
+        pipe = QwenImageEditPipeline.from_pretrained(
+            MODEL_EDIT, torch_dtype=DTYPE)
+        pipe = pipe.to(DEVICE)
+        print(f"[main] diffusers pipe loaded | device={DEVICE}")
+
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
                 for res in bench_diffusers_edit(pipe, bs, sl):
@@ -301,6 +322,9 @@ def main():
             limit_mm_per_prompt={"image": 1},
             enforce_eager=True,
         )
+        pipe = QwenImageEditPipeline.from_pretrained(
+            MODEL_EDIT, torch_dtype=DTYPE)
+        pipe = pipe.to(DEVICE)
 
         # run vllm + diffusers
         for bs in BATCH_SIZES:
