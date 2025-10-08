@@ -35,4 +35,8 @@ def iter_items(limit=8):
 
 
 print("start iter items")
-print(list(iter_items()))
+for images, prompts, edit_types in iter_items():
+    print(images)
+    print(prompts)
+    print(edit_types)
+    print("-" * 100)

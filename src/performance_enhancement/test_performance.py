@@ -81,80 +81,80 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
 
 def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
     # vLLM benchmark (MM chat)
-    images, prompts, edit_types = load_images(batch_size)
-    rewrite_prompts = [extend_prompts(prompt, edit_type, seq_len)
-                       for prompt, edit_type in zip(prompts, edit_types)]
+    for images, prompts, edit_types in load_images(batch_size):
+        rewrite_prompts = [extend_prompts(prompt, edit_type, seq_len)
+                           for prompt, edit_type in zip(prompts, edit_types)]
 
-    requests = [{
-        "role": "user",
-        "content": [
-            {"type": "image_pil", "image_pil": images[i]},
-            {"type": "text", "text": rewrite_prompts[i]},
-        ],
-    } for i in range(batch_size)]
+        requests = [{
+            "role": "user",
+            "content": [
+                {"type": "image_pil", "image_pil": images[i]},
+                {"type": "text", "text": rewrite_prompts[i]},
+            ],
+        } for i in range(batch_size)]
 
-    sampling = llm.get_default_sampling_params()
-    sampling.max_tokens = MAX_NEW_TOKENS
-    sampling.temperature = 0.7
+        sampling = llm.get_default_sampling_params()
+        sampling.max_tokens = MAX_NEW_TOKENS
+        sampling.temperature = 0.7
 
-    sync()
-    reset_peak()
-    t0 = time.perf_counter()
-    outputs = llm.chat(requests, sampling, use_tqdm=True)
-    sync()
-    t1 = time.perf_counter()
+        sync()
+        reset_peak()
+        t0 = time.perf_counter()
+        outputs = llm.chat(requests, sampling, use_tqdm=True)
+        sync()
+        t1 = time.perf_counter()
 
-    vllm_e2et = t1 - t0
-    vllm_mem = peak_mb()
-    gen_tokens = [len(o.outputs[0].token_ids) for o in outputs]
-    avg_gen = sum(gen_tokens) / max(1, len(gen_tokens))
-    approx_tpot = vllm_e2et / max(1.0, (avg_gen - 1.0))
+        vllm_e2et = t1 - t0
+        vllm_mem = peak_mb()
+        gen_tokens = [len(o.outputs[0].token_ids) for o in outputs]
+        avg_gen = sum(gen_tokens) / max(1, len(gen_tokens))
+        approx_tpot = vllm_e2et / max(1.0, (avg_gen - 1.0))
 
-    total_new_tokens = sum(gen_tokens)
-    throughput_tokens_per_s = total_new_tokens / max(vllm_e2et, 1e-6)
-    throughput_tokens_per_s_per_req = throughput_tokens_per_s / \
-        max(batch_size, 1)
+        total_new_tokens = sum(gen_tokens)
+        throughput_tokens_per_s = total_new_tokens / max(vllm_e2et, 1e-6)
+        throughput_tokens_per_s_per_req = throughput_tokens_per_s / \
+            max(batch_size, 1)
 
-    vllm_result = {
-        "phase": "vllm_mm_offline",
-        "batch_size": batch_size,
-        "seq_len": seq_len,
-        "E2ET_s": round(vllm_e2et, 4),
-        "TPOT_s_approx": round(approx_tpot, 6),
-        "PeakMem_MB": round(vllm_mem, 1),
-        "AvgGenTokens": round(avg_gen, 1),
-        "Throughput_TokensPerS": round(throughput_tokens_per_s, 2),
-        "Throughput_TokensPerS_perReq": round(throughput_tokens_per_s_per_req, 2),
-    }
+        vllm_result = {
+            "phase": "vllm_mm_offline",
+            "batch_size": batch_size,
+            "seq_len": seq_len,
+            "E2ET_s": round(vllm_e2et, 4),
+            "TPOT_s_approx": round(approx_tpot, 6),
+            "PeakMem_MB": round(vllm_mem, 1),
+            "AvgGenTokens": round(avg_gen, 1),
+            "Throughput_TokensPerS": round(throughput_tokens_per_s, 2),
+            "Throughput_TokensPerS_perReq": round(throughput_tokens_per_s_per_req, 2),
+        }
 
-    # Diffusers Qwen Image Edit benchmark
-    # Use the same images and vLLM prompts already rewritten
-    gen_kwargs = {
-        "image": images,
-        "prompt": rewrite_prompts,
-        "num_inference_steps": 20,
-        "true_cfg_scale": 1.0,
-    }
+        # Diffusers Qwen Image Edit benchmark
+        # Use the same images and vLLM prompts already rewritten
+        gen_kwargs = {
+            "image": images,
+            "prompt": rewrite_prompts,
+            "num_inference_steps": 20,
+            "true_cfg_scale": 1.0,
+        }
 
-    sync()
-    reset_peak()
-    t0 = time.perf_counter()
-    _ = pipe(**gen_kwargs).images
-    sync()
-    t1 = time.perf_counter()
+        sync()
+        reset_peak()
+        t0 = time.perf_counter()
+        _ = pipe(**gen_kwargs).images
+        sync()
+        t1 = time.perf_counter()
 
-    diff_e2et = t1 - t0
-    diff_mem = peak_mb()
+        diff_e2et = t1 - t0
+        diff_mem = peak_mb()
 
-    diffusers_result = {
-        "phase": "diffusers_edit", c
-        "batch_size": batch_size,
-        "seq_len": seq_len,
-        "E2ET_s": round(diff_e2et, 4),
-        "PeakMem_MB": round(diff_mem, 1),
-    }
+        diffusers_result = {
+            "phase": "diffusers_edit",
+            "batch_size": batch_size,
+            "seq_len": seq_len,
+            "E2ET_s": round(diff_e2et, 4),
+            "PeakMem_MB": round(diff_mem, 1),
+        }
 
-    return vllm_result, diffusers_result
+        yield vllm_result, diffusers_result
 
 
 # def bench_vllm_mm_offline(llm: LLM, batch_size: int, seq_len: int):
@@ -244,34 +244,34 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 
 def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
     # Build text prompts (seq_len control) + open the same image N times for a batch
-    images, prompts, edit_types = load_images(batch_size)
-    rewrite_prompts = [extend_prompts(prompt, edit_type, seq_len)
-                       for prompt, edit_type in zip(prompts, edit_types)]
+    for images, prompts, edit_types in load_images(batch_size):
+        rewrite_prompts = [extend_prompts(prompt, edit_type, seq_len)
+                           for prompt, edit_type in zip(prompts, edit_types)]
 
-    gen_kwargs = {
-        "image": images,
-        "prompt": rewrite_prompts,
-        "num_inference_steps": 50,
-        "true_cfg_scale": 1.0,             # Qwen-Image setting
-    }
+        gen_kwargs = {
+            "image": images,
+            "prompt": rewrite_prompts,
+            "num_inference_steps": 50,
+            "true_cfg_scale": 1.0,             # Qwen-Image setting
+        }
 
-    sync()
-    reset_peak()
-    t0 = time.perf_counter()
-    _ = pipe(**gen_kwargs).images
-    sync()
-    t1 = time.perf_counter()
+        sync()
+        reset_peak()
+        t0 = time.perf_counter()
+        _ = pipe(**gen_kwargs).images
+        sync()
+        t1 = time.perf_counter()
 
-    e2et = t1 - t0
-    peak_mb = peak_mb()
+        e2et = t1 - t0
+        peak_mb = peak_mb()
 
-    return {
-        "phase": "diffusers_edit",
-        "batch_size": batch_size,
-        "seq_len": seq_len,
-        "E2ET_s": round(e2et, 4),
-        "PeakMem_MB": round(peak_mb, 1),
-    }
+        yield {
+            "phase": "diffusers_edit",
+            "batch_size": batch_size,
+            "seq_len": seq_len,
+            "E2ET_s": round(e2et, 4),
+            "PeakMem_MB": round(peak_mb, 1),
+        }
 
 
 def main():
@@ -283,8 +283,9 @@ def main():
     if RUN_DIFFUSERS_TEST:
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
-                res = bench_diffusers_edit(pipe, bs, sl)
-                print(res)
+                for res in bench_diffusers_edit(pipe, bs, sl):
+                    print(res)
+                    print("-" * 100)
 
     if RUN_VLLM_DIFFUSERS_TEST:
         from vllm import LLM
@@ -299,15 +300,16 @@ def main():
             for sl in SEQ_LENS:
                 # warmup (not measured)
                 for _ in range(WARMUP):
-                    _ = bench_vllm_and_diffusers(llm, pipe, bs, sl)
+                    bench_vllm_and_diffusers(llm, pipe, bs, sl)
 
                 # measured runs
                 results = []
                 for run_idx in range(RUNS):
-                    v_res, d_res = bench_vllm_and_diffusers(llm, pipe, bs, sl)
-                    results.append({"vllm": v_res, "diff": d_res})
-                    print({**v_res, "run": run_idx + 1})
-                    print({**d_res, "run": run_idx + 1})
+                    for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
+                        results.append({"vllm": v_res, "diff": d_res})
+
+                print({**v_res, "run": run_idx + 1})
+                print({**d_res, "run": run_idx + 1})
 
                 # aggregate simple averages
                 if results:
