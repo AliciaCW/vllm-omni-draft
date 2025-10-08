@@ -18,15 +18,15 @@ if RUN_DIFFUSERS_TEST == 0 and RUN_VLLM_DIFFUSERS_TEST == 0:
     RUN_DIFFUSERS_TEST = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float16 if torch.cuda.is_available() else torch.float32
-MODEL_VL = "Qwen/Qwen2.5-VL-8B-Instruct"
+MODEL_VL = "Qwen/Qwen2.5-VL-7B-Instruct"
 MODEL_EDIT = "Qwen/Qwen-Image-Edit"
 DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
     "DATA_DIR") else "/home/dyvm6xra/dyvm6xrauser08/alicia/data/imgedit_data/Benchmark/singleturn"
 # BATCH_SIZES = [1, 2, 4]
 # SEQ_LENS = [32, 128, 512, 1024]
 BATCH_SIZES = [2]
-SEQ_LENS = [1024]
-MAX_NEW_TOKENS = 1024
+SEQ_LENS = [32]
+MAX_NEW_TOKENS = 32
 WARMUP = 1
 RUNS = 2
 SEED = 42
