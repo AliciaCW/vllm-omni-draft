@@ -97,13 +97,13 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
         rewrite_prompts = extend_prompts(prompts, edit_types, seq_len)
         print("[bench_vllm_and_diffusers] prompts extended")
 
-        requests = [{
+        requests = [[{
             "role": "user",
             "content": [
                 {"type": "image_pil", "image_pil": images[i]},
                 {"type": "text", "text": rewrite_prompts[i]},
             ],
-        } for i in range(batch_size)]
+        }]for i in range(batch_size)]
         print("[bench_vllm_and_diffusers] vLLM requests built")
 
         sampling = llm.get_default_sampling_params()
