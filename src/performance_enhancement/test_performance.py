@@ -24,11 +24,11 @@ DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
     "DATA_DIR") else "/home/dyvm6xra/dyvm6xrauser08/alicia/data/imgedit_data/Benchmark/singleturn"
 # BATCH_SIZES = [1, 2, 4]
 # SEQ_LENS = [32, 128, 512, 1024]
-BATCH_SIZES = [2]
-SEQ_LENS = [32]
-MAX_NEW_TOKENS = 32
+BATCH_SIZES = [2, 4, 8]
+SEQ_LENS = [32, 128, 256]
+MAX_NEW_TOKENS = 2048
 WARMUP = 1
-RUNS = 2
+RUNS = 1
 SEED = 42
 random.seed(SEED)
 torch.manual_seed(SEED)
@@ -87,15 +87,15 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
 
 
 def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
-    print(
-        f"[bench_vllm_and_diffusers] start | batch_size={batch_size} seq_len={seq_len}")
+    # print(
+    #     f"[bench_vllm_and_diffusers] start | batch_size={batch_size} seq_len={seq_len}")
     # vLLM benchmark (MM chat)
     for images, prompts, edit_types in load_images(batch_size):
-        print(
-            f"[bench_vllm_and_diffusers] loaded images/prompts | n={len(images)}")
+        # print(
+        #     f"[bench_vllm_and_diffusers] loaded images/prompts | n={len(images)}")
         # Batch-level extension and safety cap for diffusers
         rewrite_prompts = extend_prompts(prompts, edit_types, seq_len)
-        print("[bench_vllm_and_diffusers] prompts extended")
+        # print("[bench_vllm_and_diffusers] prompts extended")
 
         requests = [[{
             "role": "user",
@@ -104,7 +104,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
                 {"type": "text", "text": rewrite_prompts[i]},
             ],
         }]for i in range(batch_size)]
-        print("[bench_vllm_and_diffusers] vLLM requests built")
+        # print("[bench_vllm_and_diffusers] vLLM requests built")
 
         sampling = llm.get_default_sampling_params()
         sampling.max_tokens = MAX_NEW_TOKENS
@@ -112,12 +112,12 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 
         sync()
         reset_peak()
-        print("[bench_vllm_and_diffusers] calling llm.chat ...")
+        # print("[bench_vllm_and_diffusers] calling llm.chat ...")
         t0 = time.perf_counter()
         outputs = llm.chat(requests, sampling, use_tqdm=True)
         sync()
         t1 = time.perf_counter()
-        print("[bench_vllm_and_diffusers] llm.chat done")
+        # print("[bench_vllm_and_diffusers] llm.chat done")
 
         vllm_e2et = t1 - t0
         vllm_mem = cal_peak_mb()
@@ -129,8 +129,8 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
         throughput_tokens_per_s = total_new_tokens / max(vllm_e2et, 1e-6)
         throughput_tokens_per_s_per_req = throughput_tokens_per_s / \
             max(batch_size, 1)
-        print(
-            f"[bench_vllm_and_diffusers] vLLM metrics | e2e={vllm_e2et:.3f}s, tps={throughput_tokens_per_s:.2f}")
+        # print(
+        #     f"[bench_vllm_and_diffusers] vLLM metrics | e2e={vllm_e2et:.3f}s, tps={throughput_tokens_per_s:.2f}")
 
         vllm_result = {
             "phase": "vllm_mm_offline",
@@ -174,7 +174,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 
         yield vllm_result, diffusers_result
         '''
-        print("[bench_vllm_and_diffusers] skipping diffusers in this path (commented). yielding vLLM only")
+        # print("[bench_vllm_and_diffusers] skipping diffusers in this path (commented). yielding vLLM only")
         yield vllm_result, None
 
 
@@ -273,7 +273,7 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
         MAX_DIFFUSERS_WORDS = 2000
         rewrite_prompts = [" ".join(p.split()[:MAX_DIFFUSERS_WORDS])
                            for p in rewrite_prompts]
-        print("[bench_diffusers_edit] prompts extended")
+        # print("[bench_diffusers_edit] prompts extended")
         generator = torch.Generator(device=DEVICE).manual_seed(SEED)
 
         gen_kwargs = {
@@ -287,17 +287,17 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
 
         sync()
         reset_peak()
-        print("[bench_diffusers_edit] calling pipe(...) ...")
+        # print("[bench_diffusers_edit] calling pipe(...) ...")
         t0 = time.perf_counter()
         _ = pipe(**gen_kwargs).images
         sync()
         t1 = time.perf_counter()
-        print("[bench_diffusers_edit] pipe(...) done")
+        # print("[bench_diffusers_edit] pipe(...) done")
 
         e2et = t1 - t0
         peak_mb = cal_peak_mb()
-        print(
-            f"[bench_diffusers_edit] metrics | e2e={e2et:.3f}s, peakMB={peak_mb:.1f}")
+        # print(
+        #     f"[bench_diffusers_edit] metrics | e2e={e2et:.3f}s, peakMB={peak_mb:.1f}")
 
         yield {
             "phase": "diffusers_edit",
@@ -312,26 +312,23 @@ def main():
 
     # run diffusers first
 
-    print("-" * 100)
-    print("Running  test")
+    # print("-" * 100)
+    # print("Running  test")
 
     if RUN_DIFFUSERS_TEST:
         pipe = QwenImageEditPipeline.from_pretrained(
             MODEL_EDIT, torch_dtype=DTYPE)
         pipe = pipe.to(DEVICE)
-        print(f"[main] diffusers pipe loaded | device={DEVICE}")
+        # print(f"[main] diffusers pipe loaded | device={DEVICE}")
 
         results = []
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
                 for run_idx in range(RUNS):
                     for res in bench_diffusers_edit(pipe, bs, sl):
-                        print(res)
-                        print("-" * 100)
                         print({**res, "run": run_idx + 1})
                         results.append({**res, "run": run_idx + 1})
-
-        print(results)
+        # print(results)
 
     if RUN_VLLM_DIFFUSERS_TEST:
         from vllm import LLM
@@ -369,20 +366,20 @@ def main():
                         "Throughput_TokensPerS_perReq", 0.0) for r in results) / len(results)
                     avg_diff_e2e = sum(r["diff"]["E2ET_s"]
                                        for r in results) / len(results)
-                    print({
-                        "phase": "summary",
-                        "batch_size": bs,
-                        "seq_len": sl,
-                        "runs": RUNS,
-                        "vllm_avg_E2ET_s": round(avg_vllm_e2e, 4),
-                        "vllm_avg_TokensPerS": round(avg_vllm_tps, 2),
-                        "vllm_avg_TokensPerS_perReq": round(avg_vllm_tps_req, 2),
-                        "diffusers_avg_E2ET_s": round(avg_diff_e2e, 4),
-                    })
+                    # print({
+                    #     "phase": "summary",
+                    #     "batch_size": bs,
+                    #     "seq_len": sl,
+                    #     "runs": RUNS,
+                    #     "vllm_avg_E2ET_s": round(avg_vllm_e2e, 4),
+                    #     "vllm_avg_TokensPerS": round(avg_vllm_tps, 2),
+                    #     "vllm_avg_TokensPerS_perReq": round(avg_vllm_tps_req, 2),
+                    #     "diffusers_avg_E2ET_s": round(avg_diff_e2e, 4),
+                    # })
 
-    print("-" * 100)
-    print("Done")
-    print("-" * 100)
+    # print("-" * 100)
+    # print("Done")
+    # print("-" * 100)
 
 
 if __name__ == "__main__":
