@@ -93,8 +93,8 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
     for images, prompts, edit_types in load_images(batch_size):
         print(
             f"[bench_vllm_and_diffusers] loaded images/prompts | n={len(images)}")
-        rewrite_prompts = [extend_prompts(prompt, edit_type, seq_len)
-                           for prompt, edit_type in zip(prompts, edit_types)]
+        # Batch-level extension and safety cap for diffusers
+        rewrite_prompts = extend_prompts(prompts, edit_types, seq_len)
         print("[bench_vllm_and_diffusers] prompts extended")
 
         requests = [{
@@ -268,15 +268,21 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
     for images, prompts, edit_types in load_images(batch_size):
         print(
             f"[bench_diffusers_edit] loaded images/prompts | n={len(images)}")
-        rewrite_prompts = [extend_prompts(prompt, edit_type, seq_len)
-                           for prompt, edit_type in zip(prompts, edit_types)]
+        # Batch-level extension and safety cap for rotary constraints
+        rewrite_prompts = extend_prompts(prompts, edit_types, seq_len)
+        MAX_DIFFUSERS_WORDS = 2000
+        rewrite_prompts = [" ".join(p.split()[:MAX_DIFFUSERS_WORDS])
+                           for p in rewrite_prompts]
         print("[bench_diffusers_edit] prompts extended")
+        generator = torch.Generator(device=DEVICE).manual_seed(SEED)
 
         gen_kwargs = {
             "image": images,
             "prompt": rewrite_prompts,
+            "generator": generator,
             "num_inference_steps": 50,
             "true_cfg_scale": 1.0,             # Qwen-Image setting
+            "num_images_per_prompt": 1,
         }
 
         sync()
@@ -310,8 +316,7 @@ def main():
     print("Running  test")
 
     if RUN_DIFFUSERS_TEST:
-        pipe = QwenImageEditPipeline.from_pretrained(
-            MODEL_EDIT, torch_dtype=DTYPE)
+        pipe = QwenImageEditPipeline.from_pretrained(MODEL_EDIT, dtype=DTYPE)
         pipe = pipe.to(DEVICE)
         print(f"[main] diffusers pipe loaded | device={DEVICE}")
 
