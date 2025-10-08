@@ -16,7 +16,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float16 if torch.cuda.is_available() else torch.float32
 MODEL_VL = "Qwen/Qwen2.5-VL-8B-Instruct"
 MODEL_EDIT = "Qwen/Qwen-Image-Edit"
-
+DATA_DIR = "/Users/congwang/Documents/dataset/imgedit_data/Benchmark/singleturn"
 # BATCH_SIZES = [1, 2, 4]
 # SEQ_LENS = [32, 128, 512, 1024]
 BATCH_SIZES = [2]
@@ -57,7 +57,8 @@ def extend_prompts(prompts: List[str], edit_types: List[str], target_seq_len: in
 
 def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str]]:
     """Load exactly one batch of images/prompts/edit_types. Fallback to dummy if needed."""
-    data_dir = "/Users/congwang/Documents/dataset/imgedit_data/Benchmark/singleturn"
+    data_dir = DATA_DIR
+
     json_path = os.path.join(data_dir, "singleturn.json")
     images, prompts, edit_types = [], [], []
     if os.path.isfile(json_path):
@@ -129,6 +130,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 
         # Diffusers Qwen Image Edit benchmark
         # Use the same images and vLLM prompts already rewritten
+        '''
         gen_kwargs = {
             "image": images,
             "prompt": rewrite_prompts,
@@ -155,6 +157,8 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
         }
 
         yield vllm_result, diffusers_result
+        '''
+        yield vllm_result, None
 
 
 # def bench_vllm_mm_offline(llm: LLM, batch_size: int, seq_len: int):
@@ -280,6 +284,9 @@ def main():
     pipe = pipe.to(DEVICE)
     # run diffusers first
 
+    print("-" * 100)
+    print("Running  test")
+
     if RUN_DIFFUSERS_TEST:
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
@@ -308,6 +315,7 @@ def main():
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
                         results.append({"vllm": v_res, "diff": d_res})
 
+                print(results)
                 print({**v_res, "run": run_idx + 1})
                 print({**d_res, "run": run_idx + 1})
 
@@ -331,6 +339,10 @@ def main():
                         "vllm_avg_TokensPerS_perReq": round(avg_vllm_tps_req, 2),
                         "diffusers_avg_E2ET_s": round(avg_diff_e2e, 4),
                     })
+
+    print("-" * 100)
+    print("Done")
+    print("-" * 100)
 
 
 if __name__ == "__main__":
