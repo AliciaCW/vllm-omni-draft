@@ -7,9 +7,11 @@ from typing import List, Tuple
 
 import torch
 from PIL import Image
-from vllm import LLM
+
 from diffusers import QwenImageEditPipeline
 
+RUN_VLLM_DIFFUSERS_TEST = 0
+RUN_DIFFUSERS_TEST = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float16 if torch.cuda.is_available() else torch.float32
 MODEL_VL = "Qwen/Qwen2.5-VL-8B-Instruct"
@@ -77,7 +79,7 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
                 i = 0
 
 
-def bench_vllm_and_diffusers(llm: LLM, pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
+def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
     # vLLM benchmark (MM chat)
     images, prompts, edit_types = load_images(batch_size)
     rewrite_prompts = [extend_prompts(prompt, edit_type, seq_len)
@@ -145,7 +147,7 @@ def bench_vllm_and_diffusers(llm: LLM, pipe: QwenImageEditPipeline, batch_size: 
     diff_mem = peak_mb()
 
     diffusers_result = {
-        "phase": "diffusers_edit",
+        "phase": "diffusers_edit", c
         "batch_size": batch_size,
         "seq_len": seq_len,
         "E2ET_s": round(diff_e2et, 4),
@@ -273,55 +275,60 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
 
 
 def main():
-    llm = LLM(
-        model=MODEL_VL,
-        limit_mm_per_prompt={"image": 1},
-        enforce_eager=True,
-    )
 
     pipe = QwenImageEditPipeline.from_pretrained(MODEL_EDIT, torch_dtype=DTYPE)
     pipe = pipe.to(DEVICE)
     # run diffusers first
-    for bs in BATCH_SIZES:
-        for sl in SEQ_LENS:
-            res = bench_diffusers_edit(pipe, bs, sl)
-            print(res)
 
-    # run vllm + diffusers
-    for bs in BATCH_SIZES:
-        for sl in SEQ_LENS:
-            # warmup (not measured)
-            for _ in range(WARMUP):
-                _ = bench_vllm_and_diffusers(llm, pipe, bs, sl)
+    if RUN_DIFFUSERS_TEST:
+        for bs in BATCH_SIZES:
+            for sl in SEQ_LENS:
+                res = bench_diffusers_edit(pipe, bs, sl)
+                print(res)
 
-            # measured runs
-            results = []
-            for run_idx in range(RUNS):
-                v_res, d_res = bench_vllm_and_diffusers(llm, pipe, bs, sl)
-                results.append({"vllm": v_res, "diff": d_res})
-                print({**v_res, "run": run_idx + 1})
-                print({**d_res, "run": run_idx + 1})
+    if RUN_VLLM_DIFFUSERS_TEST:
+        from vllm import LLM
+        llm = LLM(
+            model=MODEL_VL,
+            limit_mm_per_prompt={"image": 1},
+            enforce_eager=True,
+        )
 
-            # aggregate simple averages
-            if results:
-                avg_vllm_e2e = sum(r["vllm"]["E2ET_s"]
-                                   for r in results) / len(results)
-                avg_vllm_tps = sum(r["vllm"].get(
-                    "Throughput_TokensPerS", 0.0) for r in results) / len(results)
-                avg_vllm_tps_req = sum(r["vllm"].get(
-                    "Throughput_TokensPerS_perReq", 0.0) for r in results) / len(results)
-                avg_diff_e2e = sum(r["diff"]["E2ET_s"]
-                                   for r in results) / len(results)
-                print({
-                    "phase": "summary",
-                    "batch_size": bs,
-                    "seq_len": sl,
-                    "runs": RUNS,
-                    "vllm_avg_E2ET_s": round(avg_vllm_e2e, 4),
-                    "vllm_avg_TokensPerS": round(avg_vllm_tps, 2),
-                    "vllm_avg_TokensPerS_perReq": round(avg_vllm_tps_req, 2),
-                    "diffusers_avg_E2ET_s": round(avg_diff_e2e, 4),
-                })
+        # run vllm + diffusers
+        for bs in BATCH_SIZES:
+            for sl in SEQ_LENS:
+                # warmup (not measured)
+                for _ in range(WARMUP):
+                    _ = bench_vllm_and_diffusers(llm, pipe, bs, sl)
+
+                # measured runs
+                results = []
+                for run_idx in range(RUNS):
+                    v_res, d_res = bench_vllm_and_diffusers(llm, pipe, bs, sl)
+                    results.append({"vllm": v_res, "diff": d_res})
+                    print({**v_res, "run": run_idx + 1})
+                    print({**d_res, "run": run_idx + 1})
+
+                # aggregate simple averages
+                if results:
+                    avg_vllm_e2e = sum(r["vllm"]["E2ET_s"]
+                                       for r in results) / len(results)
+                    avg_vllm_tps = sum(r["vllm"].get(
+                        "Throughput_TokensPerS", 0.0) for r in results) / len(results)
+                    avg_vllm_tps_req = sum(r["vllm"].get(
+                        "Throughput_TokensPerS_perReq", 0.0) for r in results) / len(results)
+                    avg_diff_e2e = sum(r["diff"]["E2ET_s"]
+                                       for r in results) / len(results)
+                    print({
+                        "phase": "summary",
+                        "batch_size": bs,
+                        "seq_len": sl,
+                        "runs": RUNS,
+                        "vllm_avg_E2ET_s": round(avg_vllm_e2e, 4),
+                        "vllm_avg_TokensPerS": round(avg_vllm_tps, 2),
+                        "vllm_avg_TokensPerS_perReq": round(avg_vllm_tps_req, 2),
+                        "diffusers_avg_E2ET_s": round(avg_diff_e2e, 4),
+                    })
 
 
 if __name__ == "__main__":
