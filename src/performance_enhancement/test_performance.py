@@ -367,7 +367,7 @@ def main():
     # print("-" * 100)
     # print("Running  test")
 
-    if RUN_DIFFUSERS_TEST:
+    if bool(RUN_DIFFUSERS_TEST):
         print("RUN_DIFFUSERS_TEST", RUN_DIFFUSERS_TEST)
         pipe = QwenImageEditPipeline.from_pretrained(
             MODEL_EDIT, torch_dtype=DTYPE)
@@ -385,7 +385,7 @@ def main():
                         iters += 1
         # print(results)
 
-    if RUN_VLLM_DIFFUSERS_TEST:
+    if bool(RUN_VLLM_DIFFUSERS_TEST):
         print("RUN_VLLM_DIFFUSERS_TEST", RUN_VLLM_DIFFUSERS_TEST)
         from vllm import LLM
         llm = LLM(
