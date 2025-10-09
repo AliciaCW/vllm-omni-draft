@@ -17,7 +17,7 @@ RUN_VLLM_DIFFUSERS_TEST = os.environ.get("RUN_VLLM_DIFFUSERS_TEST") if os.enviro
 if RUN_DIFFUSERS_TEST == 0 and RUN_VLLM_DIFFUSERS_TEST == 0:
     RUN_DIFFUSERS_TEST = 1
 MOCK_TEST = os.environ.get("MOCK_TEST") if os.environ.get(
-    "MOCK_TEST") else 1
+    "MOCK_TEST") else 0
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.bfloat16
 QWEN_VL_INPUT_TOKENS = 3584
@@ -356,7 +356,6 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             "Throughput_ImagesPerS_perPrompt": round(throughput_images_per_s_per_prompt, 2),
             "Throughput_QwenVLInputTokensPerS": round(throughput_qwen_vl_input_tokens_per_s, 2),
             "Throughput_QwenVLInputTokensPerS_perPrompt": round(throughput_qwen_vl_input_tokens_per_prompt, 2),
-            "EncodedTokens": total_encoded_tokens,
             "TransformerTokens": total_transformer_tokens,
             "QwenVLInputTokens": total_qwen_vl_input_tokens,
         }
