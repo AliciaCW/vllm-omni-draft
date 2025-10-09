@@ -25,6 +25,7 @@ def iter_items(limit=8):
         edit_types.append(edit_type)
         i += 1
         if i == bs:
+            print("yield images, prompts, edit_types")
             yield "images", prompts, edit_types
             images, prompts, edit_types = [], [], []
             i = 0
@@ -34,9 +35,12 @@ def iter_items(limit=8):
         num += 1
 
 
-print("start iter items")
-for images, prompts, edit_types in iter_items():
-    print(images)
-    print(prompts)
-    print(edit_types)
-    print("-" * 100)
+# print("start iter items")
+# for images, prompts, edit_types in iter_items():
+#     print(images)
+#     print(prompts)
+#     print(edit_types)
+#     print("-" * 100)
+
+print(" iter once")
+iter_items()

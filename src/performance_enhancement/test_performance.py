@@ -356,6 +356,8 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             "Throughput_ImagesPerS_perPrompt": round(throughput_images_per_s_per_prompt, 2),
             "Throughput_QwenVLInputTokensPerS": round(throughput_qwen_vl_input_tokens_per_s, 2),
             "Throughput_QwenVLInputTokensPerS_perPrompt": round(throughput_qwen_vl_input_tokens_per_prompt, 2),
+            "EncodedTokens": total_encoded_tokens,
+            "TransformerTokens": total_transformer_tokens,
             "QwenVLInputTokens": total_qwen_vl_input_tokens,
         }
 
@@ -377,9 +379,11 @@ def main():
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
                 for run_idx in range(RUNS):
+                    iters = 0
                     for res in bench_diffusers_edit(pipe, bs, sl):
-                        print({**res, "run": run_idx + 1})
+                        print({"run": run_idx + 1, "iter": iters + 1, **res})
                         results.append({**res, "run": run_idx + 1})
+                        iters += 1
         # print(results)
 
     if RUN_VLLM_DIFFUSERS_TEST:
@@ -404,9 +408,12 @@ def main():
                 # measured runs
                 results = []
                 for run_idx in range(RUNS):
+                    iters = 0
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
-                        print({**v_res, "run": run_idx + 1})
+                        print({"run": run_idx + 1, "iter": iters + 1, **v_res})
+                        # print({"run": run_idx + 1, "iter": iters + 1, **d_res})
                         results.append({"vllm": v_res, "diff": d_res})
+                        iters += 1
 
                 # aggregate simple averages
                 if results:
@@ -417,8 +424,8 @@ def main():
                     avg_vllm_tps_req = sum(r["vllm"].get(
                         "Throughput_TokensPerS_perReq", 0.0) for r in results) / len(results)
                     if type(r["diff"]) is not str:
-                        avg_diff_e2e = sum(r["diff"].get("E2ET_s", 0.0)
-                                           for r in results if isinstance(r["diff"], dict)) / max(1, len([r for r in results if isinstance(r["diff"], dict)]))
+                        avg_diff_e2e = sum(r["diff"]["E2ET_s"]
+                                           for r in results) / len(results)
                     # print({
                     #     "phase": "summary",
                     #     "batch_size": bs,
