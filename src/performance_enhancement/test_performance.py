@@ -95,7 +95,7 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
     if os.path.isfile(json_path):
         with open(json_path, "r") as f:
             data = json.load(f)
-        i = 0
+        i, j = 0, 0
         for idx, item in data.items():
             img_path = item.get("id")
             full_path = os.path.join(data_dir, img_path)
@@ -106,11 +106,12 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
             prompts.append(prompt)
             edit_types.append(edit_type)
             i += 1
+            j += 1
             if i == batch_size:
                 yield images, prompts, edit_types
                 images, prompts, edit_types = [], [], []
                 i = 0
-            if EARLY_STOP and idx == 16:
+            if EARLY_STOP and j == 16:
                 break
 
 
@@ -215,91 +216,6 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
         yield vllm_result, "No diffusers result"
 
 
-# def bench_vllm_mm_offline(llm: LLM, batch_size: int, seq_len: int):
-#     images = load_images(batch_size)
-#     base_text = "Please remove the specified object and describe the edit briefly."
-#     user_texts = [extend_text(base_text, seq_len) for _ in range(batch_size)]
-
-#     requests = [{
-#         "role": "user",
-#         "content": [
-#             {"type": "image_pil", "image_pil": images[i]},
-#             {"type": "text", "text": build_qwen25_vl_prompt(user_texts[i])},
-#         ],
-#     } for i in range(batch_size)]
-
-#     sampling = llm.get_default_sampling_params()
-#     sampling.max_tokens = MAX_NEW_TOKENS
-#     sampling.temperature = 0.7
-
-#     sync()
-#     reset_peak()
-#     t0 = time.perf_counter()
-#     outputs = llm.chat(requests, sampling, use_tqdm=True)
-#     sync()
-#     t1 = time.perf_counter()
-
-#     e2et = t1 - t0
-#     mem = cal_peak_mb()
-#     gen_tokens = [len(o.outputs[0].token_ids) for o in outputs]
-#     avg_gen = sum(gen_tokens) / max(1, len(gen_tokens))
-#     approx_tpot = e2et / max(1.0, (avg_gen - 1.0))
-
-#     total_new_tokens = sum(gen_tokens)
-#     throughput_tokens_per_s = total_new_tokens / max(e2et, 1e-6)
-#     throughput_tokens_per_s_per_req = throughput_tokens_per_s / \
-#         max(batch_size, 1)
-
-#     return {
-#         "phase": "vllm_mm_offline",
-#         "batch_size": batch_size,
-#         "seq_len": seq_len,
-#         "E2ET_s": round(e2et, 4),
-#         "TPOT_s_approx": round(approx_tpot, 6),
-#         "PeakMem_MB": round(mem, 1),
-#         "AvgGenTokens": round(avg_gen, 1),
-#         "Throughput_TokensPerS": round(throughput_tokens_per_s, 2),
-#         "Throughput_TokensPerS_perReq": round(throughput_tokens_per_s_per_req, 2),
-#     }
-
-
-# def bench_diffusers_edit_prompt_embeds(pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
-#     # Build text prompts (seq_len control) + open the same image N times for a batch
-#     samples = load_images(batch_size)
-#     prompts = [extend_prompt(s["prompt"], seq_len) for s in samples]
-#     # TODO: edit to get_qwen_prompt_embeds
-#     prompt_embeds = [get_qwen_prompt_embeds(
-#         s["prompt"], seq_len) for s in samples]
-#     images = [Image.open(s["image_path"]).convert("RGB") for s in samples]
-
-#     # Diffusers does not have per-token metrics; we measure E2ET & PeakMem for the batch
-#     gen_kwargs = {
-#         "image": images,
-#         # use prompt text directly (simpler offline)
-#         "prompt": prompts,
-#         "num_inference_steps": 20,         # adjust if needed
-#         "true_cfg_scale": 1.0,             # Qwen-Image setting
-#     }
-
-#     sync()
-#     reset_peak()
-#     t0 = time.perf_counter()
-#     _ = pipe(**gen_kwargs).images
-#     sync()
-#     t1 = time.perf_counter()
-
-#     e2et = t1 - t0
-#     peak_mb = cal_peak_mb()
-
-#     return {
-#         "phase": "diffusers_edit",
-#         "batch_size": batch_size,
-#         "seq_len": seq_len,
-#         "E2ET_s": round(e2et, 4),
-#         "PeakMem_MB": round(peak_mb, 1),
-#     }
-
-
 def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
     # Build text prompts (seq_len control) + open the same image N times for a batch
     for images, prompts, edit_types in load_images(batch_size):
@@ -308,10 +224,9 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
 
         generator = torch.Generator(device=DEVICE).manual_seed(SEED)
 
-        prompt_embeds = torch.randn(
-            batch_size, seq_len, 3584, device=DEVICE, dtype=DTYPE)
-
         if MOCK_TEST:
+            prompt_embeds = torch.randn(
+                batch_size, seq_len, QWEN_VL_INPUT_TOKENS, device=DEVICE, dtype=DTYPE)
             prompt_embeds_mask = torch.ones(
                 prompt_embeds.shape[0], prompt_embeds.shape[1], device=DEVICE, dtype=torch.bool)
             gen_kwargs = {
@@ -340,9 +255,6 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
         reset_peak()
         # print("[bench_diffusers_edit] calling pipe(...) ...")
         t0 = time.perf_counter()
-
-        # 获取编码后的token数量（避免OOM，只计算tokenization）
-        tokenizer = pipe.tokenizer
 
         # 对每个prompt进行tokenization（不进行实际编码）
         total_qwen_vl_input_tokens = batch_size * QWEN_VL_INPUT_TOKENS
@@ -436,7 +348,8 @@ def main():
                     iters = 0
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
                         print({"run": run_idx + 1, "iter": iters + 1, **v_res})
-                        # print({"run": run_idx + 1, "iter": iters + 1, **d_res})
+                        if type(r["diff"]) is not str:
+                            print({"run": run_idx + 1, "iter": iters + 1, **d_res})
                         results.append({"vllm": v_res, "diff": d_res})
                         iters += 1
 
