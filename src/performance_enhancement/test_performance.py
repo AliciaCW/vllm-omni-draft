@@ -354,10 +354,9 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             "PeakMem_MB": round(peak_mb, 1),
             "Throughput_ImagesPerS": round(throughput_images_per_s, 2),
             "Throughput_ImagesPerS_perPrompt": round(throughput_images_per_s_per_prompt, 2),
+            "QwenVLInputTokens": total_qwen_vl_input_tokens,
             "Throughput_QwenVLInputTokensPerS": round(throughput_qwen_vl_input_tokens_per_s, 2),
             "Throughput_QwenVLInputTokensPerS_perPrompt": round(throughput_qwen_vl_input_tokens_per_prompt, 2),
-            "TransformerTokens": total_transformer_tokens,
-            "QwenVLInputTokens": total_qwen_vl_input_tokens,
         }
 
 
@@ -369,6 +368,7 @@ def main():
     # print("Running  test")
 
     if RUN_DIFFUSERS_TEST:
+        print("RUN_DIFFUSERS_TEST", RUN_DIFFUSERS_TEST)
         pipe = QwenImageEditPipeline.from_pretrained(
             MODEL_EDIT, torch_dtype=DTYPE)
         pipe = pipe.to(DEVICE)
@@ -386,6 +386,7 @@ def main():
         # print(results)
 
     if RUN_VLLM_DIFFUSERS_TEST:
+        print("RUN_VLLM_DIFFUSERS_TEST", RUN_VLLM_DIFFUSERS_TEST)
         from vllm import LLM
         llm = LLM(
             model=MODEL_VL,
