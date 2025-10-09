@@ -153,6 +153,8 @@ def infer(
     #     # prompt = polish_edit_prompt(prompt, image)
     #     # print(f"Rewritten Prompt: {prompt}")
     #     print(f"Rewrite prompt is not implemented")
+
+    # TODO 这里不太对
     if prompt is not None:
         extended_prompts = []
         for p in prompt:
@@ -203,41 +205,41 @@ def infer(
         total_qwen_vl_input_tokens = 0  # Qwen2.5-VL在diffusers中的输入token数
         for i, prompt in enumerate(rewrite_prompts):
             # Tokenize prompt
-            text_inputs = tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            # 计算非padding的token数量
-            input_ids = text_inputs.input_ids
-            print(f"length of input_ids: {len(input_ids[0])}")
-            # 排除padding tokens
-            pad_token_id = getattr(
-                tokenizer, 'pad_token_id', 0)  # 默认使用0作为padding
-            non_padding_tokens = (input_ids != pad_token_id).sum().item()
-            print(f"length of non_padding_tokens: {non_padding_tokens}")
-            total_encoded_tokens += non_padding_tokens
-            # transformer处理的token数量等于序列长度（包括padding）
-            # 不需要实际编码，直接使用tokenizer的输出形状
-            transformer_tokens = input_ids.shape[1]  # seq_len
-            total_transformer_tokens += transformer_tokens
-            # 计算Qwen2.5-VL在diffusers中的输入token数（text + image）
-            # 文本token数
-            text_tokens = non_padding_tokens
-            # 图像token数（Qwen2.5-VL在diffusers中的图像处理）
-            img_width, img_height = images[i].size
-            # Qwen2.5-VL通常resize图像到固定尺寸，假设为448x448
-            target_size = 448
-            patch_size = 14
-            num_patches = (target_size // patch_size) * \
-                (target_size // patch_size)
-            # Qwen2.5-VL图像token通常为576个（24x24 patches）
-            img_tokens = min(num_patches, 576)  # 最多576个图像token
-            print(f"length of img_tokens: {img_tokens}")
-            qwen_vl_input_tokens = text_tokens + img_tokens
-            total_qwen_vl_input_tokens += qwen_vl_input_tokens
+        text_inputs = tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        # 计算非padding的token数量
+        input_ids = text_inputs.input_ids
+        print(f"length of input_ids: {len(input_ids[0])}")
+        # 排除padding tokens
+        pad_token_id = getattr(
+            tokenizer, 'pad_token_id', 0)  # 默认使用0作为padding
+        non_padding_tokens = (input_ids != pad_token_id).sum().item()
+        print(f"length of non_padding_tokens: {non_padding_tokens}")
+        total_encoded_tokens += non_padding_tokens
+        # transformer处理的token数量等于序列长度（包括padding）
+        # 不需要实际编码，直接使用tokenizer的输出形状
+        transformer_tokens = input_ids.shape[1]  # seq_len
+        total_transformer_tokens += transformer_tokens
+        # 计算Qwen2.5-VL在diffusers中的输入token数（text + image）
+        # 文本token数
+        text_tokens = non_padding_tokens
+        # 图像token数（Qwen2.5-VL在diffusers中的图像处理）
+        img_width, img_height = images[i].size
+        # Qwen2.5-VL通常resize图像到固定尺寸，假设为448x448
+        target_size = 448
+        patch_size = 14
+        num_patches = (target_size // patch_size) * \
+            (target_size // patch_size)
+        # Qwen2.5-VL图像token通常为576个（24x24 patches）
+        img_tokens = min(num_patches, 576)  # 最多576个图像token
+        print(f"length of img_tokens: {img_tokens}")
+        qwen_vl_input_tokens = text_tokens + img_tokens
+        total_qwen_vl_input_tokens += qwen_vl_input_tokens
         print(f"Total encoded tokens: {total_encoded_tokens}")
         print(f"Total transformer tokens: {total_transformer_tokens}")
         print(f"Total Qwen2.5-VL input tokens: {total_qwen_vl_input_tokens}")

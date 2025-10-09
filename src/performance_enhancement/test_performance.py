@@ -10,14 +10,17 @@ from PIL import Image
 
 from diffusers import QwenImageEditPipeline
 
-RUN_DIFFUSERS_TEST = os.environ.get("RUN_DIFFUSERS_TEST") if os.environ.get(
+RUN_DIFFUSERS_TEST = int(os.environ.get("RUN_DIFFUSERS_TEST")) if os.environ.get(
     "RUN_DIFFUSERS_TEST") else 0
-RUN_VLLM_DIFFUSERS_TEST = os.environ.get("RUN_VLLM_DIFFUSERS_TEST") if os.environ.get(
+RUN_VLLM_DIFFUSERS_TEST = int(os.environ.get("RUN_VLLM_DIFFUSERS_TEST")) if os.environ.get(
     "RUN_VLLM_DIFFUSERS_TEST") else 0
 if RUN_DIFFUSERS_TEST == 0 and RUN_VLLM_DIFFUSERS_TEST == 0:
     RUN_DIFFUSERS_TEST = 1
-MOCK_TEST = os.environ.get("MOCK_TEST") if os.environ.get(
+MOCK_TEST = int(os.environ.get("MOCK_TEST")) if os.environ.get(
     "MOCK_TEST") else 0
+EARLY_STOP = int(os.environ.get("EARLY_STOP")) if os.environ.get(
+    "EARLY_STOP") else 1
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.bfloat16
 QWEN_VL_INPUT_TOKENS = 3584
@@ -25,10 +28,9 @@ MODEL_VL = "Qwen/Qwen2.5-VL-7B-Instruct"
 MODEL_EDIT = "Qwen/Qwen-Image-Edit"
 DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
     "DATA_DIR") else "/home/dyvm6xra/dyvm6xrauser08/alicia/data/imgedit_data/Benchmark/singleturn"
-# BATCH_SIZES = [1, 2, 4]
-# SEQ_LENS = [32, 128, 512, 1024]
+
 BATCH_SIZES = [2, 4, 8]
-SEQ_LENS = [32, 128, 256]
+SEQ_LENS = [128, 256, 512]
 MAX_NEW_TOKENS = 32
 WARMUP = 1
 RUNS = 1
@@ -94,7 +96,7 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
         with open(json_path, "r") as f:
             data = json.load(f)
         i = 0
-        for _, item in data.items():
+        for idx, item in data.items():
             img_path = item.get("id")
             full_path = os.path.join(data_dir, img_path)
             prompt = item.get("prompt")
@@ -108,6 +110,8 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
                 yield images, prompts, edit_types
                 images, prompts, edit_types = [], [], []
                 i = 0
+            if EARLY_STOP and idx == 16:
+                break
 
 
 def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
