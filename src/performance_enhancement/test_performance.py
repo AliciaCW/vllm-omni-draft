@@ -19,7 +19,7 @@ if RUN_DIFFUSERS_TEST == 0 and RUN_VLLM_DIFFUSERS_TEST == 0:
 MOCK_TEST = os.environ.get("MOCK_TEST") if os.environ.get(
     "MOCK_TEST") else 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-DTYPE = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+DTYPE = torch.bfloat16
 QWEN_VL_INPUT_TOKENS = 3584
 MODEL_VL = "Qwen/Qwen2.5-VL-7B-Instruct"
 MODEL_EDIT = "Qwen/Qwen-Image-Edit"
@@ -356,8 +356,6 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             "Throughput_ImagesPerS_perPrompt": round(throughput_images_per_s_per_prompt, 2),
             "Throughput_QwenVLInputTokensPerS": round(throughput_qwen_vl_input_tokens_per_s, 2),
             "Throughput_QwenVLInputTokensPerS_perPrompt": round(throughput_qwen_vl_input_tokens_per_prompt, 2),
-            "EncodedTokens": total_encoded_tokens,
-            "TransformerTokens": total_transformer_tokens,
             "QwenVLInputTokens": total_qwen_vl_input_tokens,
         }
 
@@ -418,8 +416,9 @@ def main():
                         "Throughput_TokensPerS", 0.0) for r in results) / len(results)
                     avg_vllm_tps_req = sum(r["vllm"].get(
                         "Throughput_TokensPerS_perReq", 0.0) for r in results) / len(results)
-                    avg_diff_e2e = sum(r["diff"]["E2ET_s"]
-                                       for r in results) / len(results)
+                    if type(r["diff"]) is not str:
+                        avg_diff_e2e = sum(r["diff"].get("E2ET_s", 0.0)
+                                           for r in results if isinstance(r["diff"], dict)) / max(1, len([r for r in results if isinstance(r["diff"], dict)]))
                     # print({
                     #     "phase": "summary",
                     #     "batch_size": bs,
