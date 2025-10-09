@@ -116,11 +116,13 @@ for o in outputs:
 # step 2. run qwen image transformer 2d model and autoencoderkl with diffuser
 # Qwen-Image/src/examples/edit_demo.py
 # diffusers/src/diffusers/pipelines/qwenimage/pipeline_qwenimage_edit.py
+
 MAX_SEED = np.iinfo(np.int32).max
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pipe = QwenImageEditPipeline.from_pretrained(
     "Qwen/Qwen-Image-Edit", torch_dtype=torch.bfloat16).to(device)
+seq_len = 32
 
 
 def infer(
@@ -151,19 +153,55 @@ def infer(
     #     # prompt = polish_edit_prompt(prompt, image)
     #     # print(f"Rewritten Prompt: {prompt}")
     #     print(f"Rewrite prompt is not implemented")
-    extended_prompts = []
-    for p in prompt:
-        filler = (p * max(0, 32 // 3)).strip()
-        extended_prompts.append(filler)
-    prompt = extended_prompts
-    # Generate the image
-    with torch.no_grad():
-        # 获取文本编码器
-        text_encoder = pipe.text_encoder
-        tokenizer = pipe.tokenizer
-        # 对每个prompt进行tokenization
-        total_encoded_tokens = 0
+    if prompt is not None:
+        extended_prompts = []
         for p in prompt:
+            print(f"length of p: {len(p)}")
+            filler = (p * max(0, seq_len // 3)).strip()
+            print(f"length of filler: {len(filler)}")
+            extended_prompts.append(filler)
+        prompt = extended_prompts
+        rewrite_prompts = extended_prompts
+    # Generate the image
+    # 获取编码后的token数量（在进入DIT之前）
+    # with torch.no_grad():
+    #     # 获取文本编码器
+    #     text_encoder = pipe.text_encoder
+    #     tokenizer = pipe.tokenizer
+    #     # 对每个prompt进行tokenization
+    #     total_encoded_tokens = 0
+    #     total_transformer_tokens = 0
+    #     for p in prompt:
+    #         # Tokenize prompt
+    #         text_inputs = tokenizer(
+    #             p,
+    #             padding="max_length",
+    #             max_length=tokenizer.model_max_length,
+    #             truncation=True,
+    #             return_tensors="pt",
+    #         )
+    #         # 计算非padding的token数量
+    #         input_ids = text_inputs.input_ids.to(device)
+    #         # 排除padding tokens (通常为0)
+    # # 排除padding tokens
+    # pad_token_id = getattr(
+    #     tokenizer, 'pad_token_id', 0)  # 默认使用0作为padding
+    # non_padding_tokens = (input_ids != pad_token_id).sum().item()
+    #         total_encoded_tokens += non_padding_tokens
+    #         # 获取文本编码器输出（进入transformer之前的hidden states）
+    #         # [batch_size, seq_len, hidden_dim]
+    #         # text_embeddings = text_encoder(input_ids)[0]
+    #         # # transformer处理的token数量等于序列长度（包括padding）
+    #         # transformer_tokens = text_embeddings.shape[1]  # seq_len
+    #         # total_transformer_tokens += transformer_tokens
+    # 获取编码后的token数量（避免OOM，只计算tokenization）
+    if prompt is not None:
+        tokenizer = pipe.tokenizer
+        # 对每个prompt进行tokenization（不进行实际编码）
+        total_encoded_tokens = 0
+        total_transformer_tokens = 0
+        total_qwen_vl_input_tokens = 0  # Qwen2.5-VL在diffusers中的输入token数
+        for i, prompt in enumerate(rewrite_prompts):
             # Tokenize prompt
             text_inputs = tokenizer(
                 prompt,
@@ -173,18 +211,43 @@ def infer(
                 return_tensors="pt",
             )
             # 计算非padding的token数量
-            input_ids = text_inputs.input_ids.to(device)
-            # 排除padding tokens (通常为0)
-            non_padding_tokens = (
-                input_ids != tokenizer.pad_token_id).sum().item()
+            input_ids = text_inputs.input_ids
+            print(f"length of input_ids: {len(input_ids[0])}")
+            # 排除padding tokens
+            pad_token_id = getattr(
+                tokenizer, 'pad_token_id', 0)  # 默认使用0作为padding
+            non_padding_tokens = (input_ids != pad_token_id).sum().item()
+            print(f"length of non_padding_tokens: {non_padding_tokens}")
             total_encoded_tokens += non_padding_tokens
-    print(f"Total encoded tokens: {total_encoded_tokens}")
-    print(
-        f"Total encoded tokens per prompt: {total_encoded_tokens / len(prompts)}")
+            # transformer处理的token数量等于序列长度（包括padding）
+            # 不需要实际编码，直接使用tokenizer的输出形状
+            transformer_tokens = input_ids.shape[1]  # seq_len
+            total_transformer_tokens += transformer_tokens
+            # 计算Qwen2.5-VL在diffusers中的输入token数（text + image）
+            # 文本token数
+            text_tokens = non_padding_tokens
+            # 图像token数（Qwen2.5-VL在diffusers中的图像处理）
+            img_width, img_height = images[i].size
+            # Qwen2.5-VL通常resize图像到固定尺寸，假设为448x448
+            target_size = 448
+            patch_size = 14
+            num_patches = (target_size // patch_size) * \
+                (target_size // patch_size)
+            # Qwen2.5-VL图像token通常为576个（24x24 patches）
+            img_tokens = min(num_patches, 576)  # 最多576个图像token
+            print(f"length of img_tokens: {img_tokens}")
+            qwen_vl_input_tokens = text_tokens + img_tokens
+            total_qwen_vl_input_tokens += qwen_vl_input_tokens
+        print(f"Total encoded tokens: {total_encoded_tokens}")
+        print(f"Total transformer tokens: {total_transformer_tokens}")
+        print(f"Total Qwen2.5-VL input tokens: {total_qwen_vl_input_tokens}")
     if prompt_embeds is not None:
+        prompt_embeds_mask = torch.ones(
+            prompt_embeds.shape[0], prompt_embeds.shape[1], device=device, dtype=torch.bool)
         image = pipe(
             image,
             prompt_embeds=prompt_embeds,  # edit prompt -> prompt_embeds
+            prompt_embeds_mask=prompt_embeds_mask,
             negative_prompt=negative_prompt,
             num_inference_steps=num_inference_steps,
             generator=generator,
@@ -201,6 +264,7 @@ def infer(
             true_cfg_scale=true_guidance_scale,
             num_images_per_prompt=num_images_per_prompt
         ).images
+    # return "", ""
     return image, seed
 
 
@@ -212,11 +276,16 @@ images = [image_1, image_2]
 prompt_1 = "Remove the frisbee in the image"
 prompt_2 = "Change the women to men in the image"
 prompts = [prompt_1, prompt_2]
-images, seeds = infer(images, prompt=prompts)
+
+prompt_embeds = torch.randn(
+    2, seq_len, 3584, device=device, dtype=torch.bfloat16)
+# images, seeds = infer(images, prompt=prompts)
+images, seeds = infer(images, prompt_embeds=prompt_embeds)
+
 
 for i, image in enumerate(images):
     image.save(
-        f"/home/dyvm6xra/dyvm6xrauser08/alicia/data/results/test_image_edited_{i}.jpg")
+        f"/home/dyvm6xra/dyvm6xrauser08/alicia/data/results/test_mock_edit{i}.jpg")
 
 # edit using prompt_embeds
 prompt_embeds = outputs[0].outputs[0].text

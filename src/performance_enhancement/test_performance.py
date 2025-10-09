@@ -16,8 +16,11 @@ RUN_VLLM_DIFFUSERS_TEST = os.environ.get("RUN_VLLM_DIFFUSERS_TEST") if os.enviro
     "RUN_VLLM_DIFFUSERS_TEST") else 0
 if RUN_DIFFUSERS_TEST == 0 and RUN_VLLM_DIFFUSERS_TEST == 0:
     RUN_DIFFUSERS_TEST = 1
+MOCK_TEST = os.environ.get("MOCK_TEST") if os.environ.get(
+    "MOCK_TEST") else 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+QWEN_VL_INPUT_TOKENS = 3584
 MODEL_VL = "Qwen/Qwen2.5-VL-7B-Instruct"
 MODEL_EDIT = "Qwen/Qwen-Image-Edit"
 DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
@@ -131,6 +134,12 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
             max(batch_size, 1)
         # print(
         #     f"[bench_vllm_and_diffusers] vLLM metrics | e2e={vllm_e2et:.3f}s, tps={throughput_tokens_per_s:.2f}")
+        total_qwen_vl_input_tokens = batch_size * QWEN_VL_INPUT_TOKENS
+        # 计算Qwen2.5-VL输入token吞吐量
+        throughput_qwen_vl_input_tokens_per_s = total_qwen_vl_input_tokens / \
+            max(vllm_e2et, 1e-6)
+        throughput_qwen_vl_input_tokens_per_prompt = throughput_qwen_vl_input_tokens_per_s / \
+            max(batch_size, 1)
 
         vllm_result = {
             "phase": "vllm_mm_offline",
@@ -142,6 +151,9 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
             "AvgGenTokens": round(avg_gen, 1),
             "Throughput_TokensPerS": round(throughput_tokens_per_s, 2),
             "Throughput_TokensPerS_perReq": round(throughput_tokens_per_s_per_req, 2),
+            "QwenVLInputTokens": total_qwen_vl_input_tokens,
+            "Throughput_QwenVLInputTokensPerS": round(throughput_qwen_vl_input_tokens_per_s, 2),
+            "Throughput_QwenVLInputTokensPerS_perPrompt": round(throughput_qwen_vl_input_tokens_per_prompt, 2),
         }
 
         # Diffusers Qwen Image Edit benchmark
@@ -175,7 +187,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
         yield vllm_result, diffusers_result
         '''
         # print("[bench_vllm_and_diffusers] skipping diffusers in this path (commented). yielding vLLM only")
-        yield vllm_result, None
+        yield vllm_result, "No diffusers result"
 
 
 # def bench_vllm_mm_offline(llm: LLM, batch_size: int, seq_len: int):
@@ -268,48 +280,47 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
     for images, prompts, edit_types in load_images(batch_size):
         print(
             f"[bench_diffusers_edit] loaded images/prompts | n={len(images)}")
-        # Batch-level extension and safety cap for rotary constraints
-        rewrite_prompts = extend_prompts(prompts, edit_types, seq_len)
-        # print("[bench_diffusers_edit] prompts extended")
+
         generator = torch.Generator(device=DEVICE).manual_seed(SEED)
 
-        gen_kwargs = {
-            "image": images,
-            "prompt": rewrite_prompts,
-            "generator": generator,
-            "num_inference_steps": 50,
-            "true_cfg_scale": 1.0,             # Qwen-Image setting
-            "num_images_per_prompt": 1,
-        }
+        prompt_embeds = torch.randn(
+            batch_size, seq_len, 3584, device=DEVICE, dtype=DTYPE)
+
+        if MOCK_TEST:
+            prompt_embeds_mask = torch.ones(
+                prompt_embeds.shape[0], prompt_embeds.shape[1], device=DEVICE, dtype=torch.bool)
+            gen_kwargs = {
+                "image": images,
+                "prompt_embeds": prompt_embeds,
+                "prompt_embeds_mask": prompt_embeds_mask,
+                "generator": generator,
+                "num_inference_steps": 50,
+                "true_cfg_scale": 1.0,             # Qwen-Image setting
+                "num_images_per_prompt": 1,
+            }
+        else:
+            # Batch-level extension and safety cap for rotary constraints
+            rewrite_prompts = extend_prompts(prompts, edit_types, seq_len)
+            # print("[bench_diffusers_edit] prompts extended")
+            gen_kwargs = {
+                "image": images,
+                "prompt": rewrite_prompts,
+                "generator": generator,
+                "num_inference_steps": 50,
+                "true_cfg_scale": 1.0,             # Qwen-Image setting
+                "num_images_per_prompt": 1,
+            }
 
         sync()
         reset_peak()
         # print("[bench_diffusers_edit] calling pipe(...) ...")
         t0 = time.perf_counter()
 
-        # 获取编码后的token数量（在进入DIT之前）
-        with torch.no_grad():
-            # 获取文本编码器
-            text_encoder = pipe.text_encoder
-            tokenizer = pipe.tokenizer
+        # 获取编码后的token数量（避免OOM，只计算tokenization）
+        tokenizer = pipe.tokenizer
 
-            # 对每个prompt进行tokenization
-            total_encoded_tokens = 0
-            for prompt in rewrite_prompts:
-                # Tokenize prompt
-                text_inputs = tokenizer(
-                    prompt,
-                    padding="max_length",
-                    max_length=tokenizer.model_max_length,
-                    truncation=True,
-                    return_tensors="pt",
-                )
-                # 计算非padding的token数量
-                input_ids = text_inputs.input_ids.to(DEVICE)
-                # 排除padding tokens (通常为0)
-                non_padding_tokens = (
-                    input_ids != tokenizer.pad_token_id).sum().item()
-                total_encoded_tokens += non_padding_tokens
+        # 对每个prompt进行tokenization（不进行实际编码）
+        total_qwen_vl_input_tokens = batch_size * QWEN_VL_INPUT_TOKENS
 
         # 执行图像生成
         _ = pipe(**gen_kwargs).images
@@ -326,9 +337,10 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
         throughput_images_per_s_per_prompt = throughput_images_per_s / \
             max(batch_size, 1)
 
-        # 计算token吞吐量（基于实际编码的token数量）
-        throughput_tokens_per_s = total_encoded_tokens / max(e2et, 1e-6)
-        throughput_tokens_per_s_per_prompt = throughput_tokens_per_s / \
+        # 计算Qwen2.5-VL输入token吞吐量
+        throughput_qwen_vl_input_tokens_per_s = total_qwen_vl_input_tokens / \
+            max(e2et, 1e-6)
+        throughput_qwen_vl_input_tokens_per_prompt = throughput_qwen_vl_input_tokens_per_s / \
             max(batch_size, 1)
 
         # print(
@@ -342,9 +354,11 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             "PeakMem_MB": round(peak_mb, 1),
             "Throughput_ImagesPerS": round(throughput_images_per_s, 2),
             "Throughput_ImagesPerS_perPrompt": round(throughput_images_per_s_per_prompt, 2),
-            "Throughput_TokensPerS": round(throughput_tokens_per_s, 2),
-            "Throughput_TokensPerS_perPrompt": round(throughput_tokens_per_s_per_prompt, 2),
+            "Throughput_QwenVLInputTokensPerS": round(throughput_qwen_vl_input_tokens_per_s, 2),
+            "Throughput_QwenVLInputTokensPerS_perPrompt": round(throughput_qwen_vl_input_tokens_per_prompt, 2),
             "EncodedTokens": total_encoded_tokens,
+            "TransformerTokens": total_transformer_tokens,
+            "QwenVLInputTokens": total_qwen_vl_input_tokens,
         }
 
 
