@@ -53,13 +53,34 @@ def cal_peak_mb() -> float:
     return torch.cuda.max_memory_allocated() / 1024 ** 2
 
 
+# old version, not right
+# def extend_prompts(prompts: List[str], edit_types: List[str], target_seq_len: int) -> List[str]:
+#     extended_prompts = []
+#     for prompt, edit_type in zip(prompts, edit_types):
+#         prompt = (" Image edit type: " + edit_type +
+#                   " Detailed requirement: " + prompt).strip()
+#         filler = (prompt * max(0, target_seq_len // 3)).strip()
+#         extended_prompts.append(filler)
+#     return extended_prompts
+
 def extend_prompts(prompts: List[str], edit_types: List[str], target_seq_len: int) -> List[str]:
-    extended_prompts = []
-    for prompt, edit_type in zip(prompts, edit_types):
-        prompt = (" Image edit type: " + edit_type +
-                  " Detailed requirement: " + prompt).strip()
-        filler = (prompt * max(0, target_seq_len // 3)).strip()
-        extended_prompts.append(filler)
+    extended_prompts: List[str] = []
+    neutral_words = ["you", "are", "powerful"]
+    for base_prompt, edit_type in zip(prompts, edit_types):
+        base = f"Image edit type: {edit_type}. Detailed requirement: {base_prompt}".strip(
+        )
+        if target_seq_len <= 0:
+            extended_prompts.append(base)
+            continue
+        words = base.split()
+        # truncate if too long
+        if len(words) >= target_seq_len:
+            extended_prompts.append(" ".join(words[:target_seq_len]))
+            continue
+        # pad if too short
+        needed = target_seq_len - len(words)
+        pad = [neutral_words[i % len(neutral_words)] for i in range(needed)]
+        extended_prompts.append(" ".join(words + pad))
     return extended_prompts
 
 
@@ -367,7 +388,7 @@ def main():
     # print("-" * 100)
     # print("Running  test")
 
-    if bool(RUN_DIFFUSERS_TEST):
+    if int(RUN_DIFFUSERS_TEST) == 1:
         print("RUN_DIFFUSERS_TEST", RUN_DIFFUSERS_TEST)
         pipe = QwenImageEditPipeline.from_pretrained(
             MODEL_EDIT, torch_dtype=DTYPE)
@@ -385,7 +406,7 @@ def main():
                         iters += 1
         # print(results)
 
-    if bool(RUN_VLLM_DIFFUSERS_TEST):
+    if int(RUN_VLLM_DIFFUSERS_TEST) == 1:
         print("RUN_VLLM_DIFFUSERS_TEST", RUN_VLLM_DIFFUSERS_TEST)
         from vllm import LLM
         llm = LLM(
