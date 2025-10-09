@@ -26,7 +26,7 @@ DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
 # SEQ_LENS = [32, 128, 512, 1024]
 BATCH_SIZES = [2, 4, 8]
 SEQ_LENS = [32, 128, 256]
-MAX_NEW_TOKENS = 2048
+MAX_NEW_TOKENS = 32
 WARMUP = 1
 RUNS = 1
 SEED = 42
@@ -270,9 +270,6 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             f"[bench_diffusers_edit] loaded images/prompts | n={len(images)}")
         # Batch-level extension and safety cap for rotary constraints
         rewrite_prompts = extend_prompts(prompts, edit_types, seq_len)
-        MAX_DIFFUSERS_WORDS = 2000
-        rewrite_prompts = [" ".join(p.split()[:MAX_DIFFUSERS_WORDS])
-                           for p in rewrite_prompts]
         # print("[bench_diffusers_edit] prompts extended")
         generator = torch.Generator(device=DEVICE).manual_seed(SEED)
 
@@ -289,6 +286,32 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
         reset_peak()
         # print("[bench_diffusers_edit] calling pipe(...) ...")
         t0 = time.perf_counter()
+
+        # 获取编码后的token数量（在进入DIT之前）
+        with torch.no_grad():
+            # 获取文本编码器
+            text_encoder = pipe.text_encoder
+            tokenizer = pipe.tokenizer
+
+            # 对每个prompt进行tokenization
+            total_encoded_tokens = 0
+            for prompt in rewrite_prompts:
+                # Tokenize prompt
+                text_inputs = tokenizer(
+                    prompt,
+                    padding="max_length",
+                    max_length=tokenizer.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                )
+                # 计算非padding的token数量
+                input_ids = text_inputs.input_ids.to(DEVICE)
+                # 排除padding tokens (通常为0)
+                non_padding_tokens = (
+                    input_ids != tokenizer.pad_token_id).sum().item()
+                total_encoded_tokens += non_padding_tokens
+
+        # 执行图像生成
         _ = pipe(**gen_kwargs).images
         sync()
         t1 = time.perf_counter()
@@ -296,8 +319,20 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
 
         e2et = t1 - t0
         peak_mb = cal_peak_mb()
+
+        # 计算吞吐量：每秒钟生成的图像数量
+        total_images = batch_size * gen_kwargs["num_images_per_prompt"]
+        throughput_images_per_s = total_images / max(e2et, 1e-6)
+        throughput_images_per_s_per_prompt = throughput_images_per_s / \
+            max(batch_size, 1)
+
+        # 计算token吞吐量（基于实际编码的token数量）
+        throughput_tokens_per_s = total_encoded_tokens / max(e2et, 1e-6)
+        throughput_tokens_per_s_per_prompt = throughput_tokens_per_s / \
+            max(batch_size, 1)
+
         # print(
-        #     f"[bench_diffusers_edit] metrics | e2e={e2et:.3f}s, peakMB={peak_mb:.1f}")
+        #     f"[bench_diffusers_edit] metrics | e2e={e2et:.3f}s, peakMB={peak_mb:.1f}, throughput={throughput_images_per_s:.2f} img/s, tokens={throughput_tokens_per_s:.2f} tok/s")
 
         yield {
             "phase": "diffusers_edit",
@@ -305,6 +340,11 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             "seq_len": seq_len,
             "E2ET_s": round(e2et, 4),
             "PeakMem_MB": round(peak_mb, 1),
+            "Throughput_ImagesPerS": round(throughput_images_per_s, 2),
+            "Throughput_ImagesPerS_perPrompt": round(throughput_images_per_s_per_prompt, 2),
+            "Throughput_TokensPerS": round(throughput_tokens_per_s, 2),
+            "Throughput_TokensPerS_perPrompt": round(throughput_tokens_per_s_per_prompt, 2),
+            "EncodedTokens": total_encoded_tokens,
         }
 
 

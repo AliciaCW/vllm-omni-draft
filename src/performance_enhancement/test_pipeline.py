@@ -147,11 +147,40 @@ def infer(
     print(f"Negative Prompt: '{negative_prompt}'")
     print(
         f"Seed: {seed}, Steps: {num_inference_steps}, Guidance: {true_guidance_scale}")
-    if rewrite_prompt:
-        # prompt = polish_edit_prompt(prompt, image)
-        # print(f"Rewritten Prompt: {prompt}")
-        print(f"Rewrite prompt is not implemented")
+    # if rewrite_prompt:
+    #     # prompt = polish_edit_prompt(prompt, image)
+    #     # print(f"Rewritten Prompt: {prompt}")
+    #     print(f"Rewrite prompt is not implemented")
+    extended_prompts = []
+    for p in prompt:
+        filler = (p * max(0, 32 // 3)).strip()
+        extended_prompts.append(filler)
+    prompt = extended_prompts
     # Generate the image
+    with torch.no_grad():
+        # 获取文本编码器
+        text_encoder = pipe.text_encoder
+        tokenizer = pipe.tokenizer
+        # 对每个prompt进行tokenization
+        total_encoded_tokens = 0
+        for p in prompt:
+            # Tokenize prompt
+            text_inputs = tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            # 计算非padding的token数量
+            input_ids = text_inputs.input_ids.to(device)
+            # 排除padding tokens (通常为0)
+            non_padding_tokens = (
+                input_ids != tokenizer.pad_token_id).sum().item()
+            total_encoded_tokens += non_padding_tokens
+    print(f"Total encoded tokens: {total_encoded_tokens}")
+    print(
+        f"Total encoded tokens per prompt: {total_encoded_tokens / len(prompts)}")
     if prompt_embeds is not None:
         image = pipe(
             image,
