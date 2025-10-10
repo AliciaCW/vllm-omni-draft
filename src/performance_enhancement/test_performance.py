@@ -315,14 +315,14 @@ def main():
             MODEL_EDIT, torch_dtype=DTYPE)
         pipe = pipe.to(DEVICE)
         pipe.transformer.set_attention_backend("_flash_3_hub")
-        print("[diffusers] set attention backend to _flash_3_hub",
+        print("[diffusers] set attention backend to _flash_3_hub")
         # print(f"[main] diffusers pipe loaded | device={DEVICE}")
 
-        results=[]
+        results = []
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
                 for run_idx in range(RUNS):
-                    iters=0
+                    iters = 0
                     for res in bench_diffusers_edit(pipe, bs, sl):
                         print({"run": run_idx + 1, "iter": iters + 1, **res})
                         results.append({**res, "run": run_idx + 1})
@@ -332,14 +332,14 @@ def main():
     if int(RUN_VLLM_DIFFUSERS_TEST) == 1:
         print("RUN_VLLM_DIFFUSERS_TEST", RUN_VLLM_DIFFUSERS_TEST)
         from vllm import LLM
-        llm=LLM(
+        llm = LLM(
             model=MODEL_VL,
             limit_mm_per_prompt={"image": 1},
             enforce_eager=True,
         )
         # attention_backend="flash-attn"
         print(type(llm.llm_engine).__module__)
-        attn_backend=getattr(llm.llm_engine, "attention_backend", None)
+        attn_backend = getattr(llm.llm_engine, "attention_backend", None)
         print("[vllm] llm.attention_backend", attn_backend)
 
         # pipe = QwenImageEditPipeline.from_pretrained(
@@ -354,9 +354,9 @@ def main():
                     bench_vllm_and_diffusers(llm, pipe, bs, sl)
 
                 # measured runs
-                results=[]
+                results = []
                 for run_idx in range(RUNS):
-                    iters=0
+                    iters = 0
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
                         print({"run": run_idx + 1, "iter": iters + 1, **v_res})
                         if type(r["diff"]) is not str:
@@ -366,14 +366,14 @@ def main():
 
                 # aggregate simple averages
                 if results:
-                    avg_vllm_e2e=sum(r["vllm"]["E2ET_s"]
+                    avg_vllm_e2e = sum(r["vllm"]["E2ET_s"]
                                        for r in results) / len(results)
-                    avg_vllm_tps=sum(r["vllm"].get(
+                    avg_vllm_tps = sum(r["vllm"].get(
                         "Throughput_TokensPerS", 0.0) for r in results) / len(results)
-                    avg_vllm_tps_req=sum(r["vllm"].get(
+                    avg_vllm_tps_req = sum(r["vllm"].get(
                         "Throughput_TokensPerS_perReq", 0.0) for r in results) / len(results)
                     if type(r["diff"]) is not str:
-                        avg_diff_e2e=sum(r["diff"]["E2ET_s"]
+                        avg_diff_e2e = sum(r["diff"]["E2ET_s"]
                                            for r in results) / len(results)
                     # print({
                     #     "phase": "summary",
