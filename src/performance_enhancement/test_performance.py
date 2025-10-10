@@ -30,8 +30,8 @@ MODEL_EDIT = "Qwen/Qwen-Image-Edit"
 DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
     "DATA_DIR") else "/home/dyvm6xra/dyvm6xrauser08/alicia/data/imgedit_data/Benchmark/singleturn"
 
-BATCH_SIZES = [2, 4, 8]
-SEQ_LENS = [128, 256, 512]
+BATCH_SIZES = [2, 4]
+SEQ_LENS = [128, 512]
 MAX_NEW_TOKENS = 32
 WARMUP = 1
 RUNS = 1
@@ -348,9 +348,9 @@ def main():
             # attention_backend="flash-attn"
         )
         # attention_backend="flash-attn"
-        logger.debug("[vllm] llm engine %s", type(llm.llm_engine).__module__)
+        logger.info("[vllm] llm engine %s", type(llm.llm_engine).__module__)
         attn_backend = getattr(llm.llm_engine, "attention_backend", None)
-        logger.debug("[vllm] llm.attention_backend %s", attn_backend)
+        logger.info("[vllm] llm.attention_backend %s", attn_backend)
 
         # pipe = QwenImageEditPipeline.from_pretrained(
         #     MODEL_EDIT, torch_dtype=DTYPE)
