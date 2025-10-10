@@ -66,6 +66,7 @@ def cal_peak_mb() -> float:
 #     return extended_prompts
 
 def extend_prompts(prompts: List[str], edit_types: List[str], target_seq_len: int) -> List[str]:
+    print("[extend_prompts] extending prompts")
     extended_prompts: List[str] = []
     neutral_words = ["you", "are", "powerful"]
     for base_prompt, edit_type in zip(prompts, edit_types):
@@ -225,6 +226,8 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
         generator = torch.Generator(device=DEVICE).manual_seed(SEED)
 
         if MOCK_TEST:
+            print(
+                "[bench_diffusers_edit] use mock test, generating random prompt_embeds")
             prompt_embeds = torch.randn(
                 batch_size, seq_len, QWEN_VL_INPUT_TOKENS, device=DEVICE, dtype=DTYPE)
             prompt_embeds_mask = torch.ones(
@@ -240,6 +243,7 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             }
         else:
             # Batch-level extension and safety cap for rotary constraints
+            print("[bench_diffusers_edit] do not use mock test, extending prompts")
             rewrite_prompts = extend_prompts(prompts, edit_types, seq_len)
             # print("[bench_diffusers_edit] prompts extended")
             gen_kwargs = {
@@ -306,16 +310,19 @@ def main():
 
     if int(RUN_DIFFUSERS_TEST) == 1:
         print("RUN_DIFFUSERS_TEST", RUN_DIFFUSERS_TEST)
+        print("MOCK_TEST", MOCK_TEST)
         pipe = QwenImageEditPipeline.from_pretrained(
             MODEL_EDIT, torch_dtype=DTYPE)
         pipe = pipe.to(DEVICE)
+        pipe.transformer.set_attention_backend("_flash_3_hub")
+        print("[diffusers] set attention backend to _flash_3_hub",
         # print(f"[main] diffusers pipe loaded | device={DEVICE}")
 
-        results = []
+        results=[]
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
                 for run_idx in range(RUNS):
-                    iters = 0
+                    iters=0
                     for res in bench_diffusers_edit(pipe, bs, sl):
                         print({"run": run_idx + 1, "iter": iters + 1, **res})
                         results.append({**res, "run": run_idx + 1})
@@ -325,15 +332,19 @@ def main():
     if int(RUN_VLLM_DIFFUSERS_TEST) == 1:
         print("RUN_VLLM_DIFFUSERS_TEST", RUN_VLLM_DIFFUSERS_TEST)
         from vllm import LLM
-        llm = LLM(
+        llm=LLM(
             model=MODEL_VL,
             limit_mm_per_prompt={"image": 1},
             enforce_eager=True,
         )
+        # attention_backend="flash-attn"
+        print(type(llm.llm_engine).__module__)
+        attn_backend=getattr(llm.llm_engine, "attention_backend", None)
+        print("[vllm] llm.attention_backend", attn_backend)
+
         # pipe = QwenImageEditPipeline.from_pretrained(
         #     MODEL_EDIT, torch_dtype=DTYPE)
         # pipe = pipe.to(DEVICE)
-        pipe = None
 
         # run vllm + diffusers
         for bs in BATCH_SIZES:
@@ -343,9 +354,9 @@ def main():
                     bench_vllm_and_diffusers(llm, pipe, bs, sl)
 
                 # measured runs
-                results = []
+                results=[]
                 for run_idx in range(RUNS):
-                    iters = 0
+                    iters=0
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
                         print({"run": run_idx + 1, "iter": iters + 1, **v_res})
                         if type(r["diff"]) is not str:
@@ -355,14 +366,14 @@ def main():
 
                 # aggregate simple averages
                 if results:
-                    avg_vllm_e2e = sum(r["vllm"]["E2ET_s"]
+                    avg_vllm_e2e=sum(r["vllm"]["E2ET_s"]
                                        for r in results) / len(results)
-                    avg_vllm_tps = sum(r["vllm"].get(
+                    avg_vllm_tps=sum(r["vllm"].get(
                         "Throughput_TokensPerS", 0.0) for r in results) / len(results)
-                    avg_vllm_tps_req = sum(r["vllm"].get(
+                    avg_vllm_tps_req=sum(r["vllm"].get(
                         "Throughput_TokensPerS_perReq", 0.0) for r in results) / len(results)
                     if type(r["diff"]) is not str:
-                        avg_diff_e2e = sum(r["diff"]["E2ET_s"]
+                        avg_diff_e2e=sum(r["diff"]["E2ET_s"]
                                            for r in results) / len(results)
                     # print({
                     #     "phase": "summary",
