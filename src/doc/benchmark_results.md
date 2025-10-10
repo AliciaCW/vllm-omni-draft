@@ -5,8 +5,16 @@ vllm + diffuser only denoising 响应速度39.3s, 最大吞吐 185 token/s
 
 token为结合了text和image的prompt_embeds的token数
 
+**vllm qwen2.5vl + diffusers qwen image edit donot run qwen2.5vl:**
 
-vllm qwen2.5vl memory
+| 配置<br>(bs×seq) | E2ET<br>(s)            |
+| ---------------- | ---------------------- |
+| 2×128            | 0.580 + 38.7 = 39.28   |
+| 2×512            | 0.321  + 40.3 = 40.621 |
+| 4×128 (n=2)      | 0.320 + 75.3 = 75.62   |
+| 4×512 (n=2)      | 0.317 +  79.7 = 80.017 |
+
+**vllm qwen2.5vl**
 | 配置<br>(bs×seq) | E2ET<br>(s) | TPOT<br>(s) | QwenVL-output<br>吞吐/s | QwenVL-output<br>per prompt | PeakMem<br>(MB) |
 | ---------------- | ----------- | ----------- | ----------------------- | --------------------------- | --------------- |
 | 2×128            | 0.580       | 0.0187      | 12 360                  | 6 180                       | 69.9k           |
@@ -19,7 +27,7 @@ vllm qwen2.5vl memory
 | 8×256            | 0.357       | 0.0115      | 80 267                  | 10 033                      | 69.9k           |
 | 8×512            | 0.351       | 0.0113      | 81 706                  | 10 213                      | 69.9k           |
 
-diffusers qwen image edit donot run qwen2.5vl
+**diffusers qwen image edit donot run qwen2.5vl**
 | 配置<br>(bs×seq) | 平均 E2ET<br>(s) | 吞吐<br>(images/s) | 单 prompt 吞吐<br>(images/s) | Transformer Throughput<br>(tokens/s) | 峰值显存<br>(MB) |
 | ---------------- | ---------------- | ------------------ | ---------------------------- | ------------------------------------ | ---------------- |
 | 2×128 (n=4)      | 38.7             | 0.051              | 0.026                        | 185                                  | 63.6 k           |
