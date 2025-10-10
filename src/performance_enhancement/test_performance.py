@@ -308,13 +308,15 @@ def main():
     # print("-" * 100)
     # print("Running  test")
 
-    if int(RUN_DIFFUSERS_TEST) == 1:
+    if RUN_DIFFUSERS_TEST == 1:
         print("RUN_DIFFUSERS_TEST", RUN_DIFFUSERS_TEST)
         print("MOCK_TEST", MOCK_TEST)
+        os.environ["DIFFUSERS_ENABLE_HUB_KERNELS"] = "yes"
         pipe = QwenImageEditPipeline.from_pretrained(
             MODEL_EDIT, torch_dtype=DTYPE)
         pipe = pipe.to(DEVICE)
         pipe.transformer.set_attention_backend("_flash_3_hub")
+        # pipe.transformer.set_attention_backend("flash")  # FA2
         print("[diffusers] set attention backend to _flash_3_hub")
         # print(f"[main] diffusers pipe loaded | device={DEVICE}")
 
@@ -329,7 +331,7 @@ def main():
                         iters += 1
         # print(results)
 
-    if int(RUN_VLLM_DIFFUSERS_TEST) == 1:
+    if RUN_VLLM_DIFFUSERS_TEST == 1:
         print("RUN_VLLM_DIFFUSERS_TEST", RUN_VLLM_DIFFUSERS_TEST)
         from vllm import LLM
         llm = LLM(
@@ -345,7 +347,7 @@ def main():
         # pipe = QwenImageEditPipeline.from_pretrained(
         #     MODEL_EDIT, torch_dtype=DTYPE)
         # pipe = pipe.to(DEVICE)
-
+        pipe = None
         # run vllm + diffusers
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
@@ -359,7 +361,7 @@ def main():
                     iters = 0
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
                         print({"run": run_idx + 1, "iter": iters + 1, **v_res})
-                        if type(r["diff"]) is not str:
+                        if type(d_res) is not str:
                             print({"run": run_idx + 1, "iter": iters + 1, **d_res})
                         results.append({"vllm": v_res, "diff": d_res})
                         iters += 1
@@ -372,7 +374,7 @@ def main():
                         "Throughput_TokensPerS", 0.0) for r in results) / len(results)
                     avg_vllm_tps_req = sum(r["vllm"].get(
                         "Throughput_TokensPerS_perReq", 0.0) for r in results) / len(results)
-                    if type(r["diff"]) is not str:
+                    if type(d_res) is not str:
                         avg_diff_e2e = sum(r["diff"]["E2ET_s"]
                                            for r in results) / len(results)
                     # print({
