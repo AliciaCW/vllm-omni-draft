@@ -21,7 +21,7 @@ MOCK_TEST = int(os.environ.get("MOCK_TEST")) if os.environ.get(
     "MOCK_TEST") else 0
 EARLY_STOP = int(os.environ.get("EARLY_STOP")) if os.environ.get(
     "EARLY_STOP") else 1
-
+NUM_SAMPLES = 8
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.bfloat16
 QWEN_VL_INPUT_TOKENS = 3584
@@ -120,7 +120,7 @@ def load_images(batch_size: int) -> Tuple[List[Image.Image], List[str], List[str
                 yield images, prompts, edit_types
                 images, prompts, edit_types = [], [], []
                 i = 0
-            if EARLY_STOP and j == 16:
+            if EARLY_STOP and j == NUM_SAMPLES:
                 break
 
 
@@ -310,9 +310,9 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
 def main():
 
     # run diffusers first
-
-    # print("-" * 100)
-    # print("Running  test")
+    logger.info("%s", "-" * 100)
+    logger.info("Running  test")
+    logger.info("%s", "-" * 100)
 
     if RUN_DIFFUSERS_TEST == 1:
         logger.info("RUN_DIFFUSERS_TEST %s", RUN_DIFFUSERS_TEST)
@@ -345,7 +345,7 @@ def main():
             model=MODEL_VL,
             limit_mm_per_prompt={"image": 1},
             enforce_eager=True,
-            attention_backend="flash-attn"
+            # attention_backend="flash-attn"
         )
         # attention_backend="flash-attn"
         logger.debug("[vllm] llm engine %s", type(llm.llm_engine).__module__)
