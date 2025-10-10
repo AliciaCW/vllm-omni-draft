@@ -33,7 +33,6 @@ DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
 BATCH_SIZES = [2, 4]
 SEQ_LENS = [128, 512]
 MAX_NEW_TOKENS = 32
-WARMUP = 1
 RUNS = 1
 SEED = 42
 random.seed(SEED)
@@ -266,7 +265,7 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
 
         sync()
         reset_peak()
-        # logger.debug("[bench_diffusers_edit] calling pipe(...) ...")
+        logger.debug("[bench_diffusers_edit] calling pipe(...) ...")
         t0 = time.perf_counter()
 
         # 对每个prompt进行tokenization（不进行实际编码）
@@ -276,7 +275,7 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
         _ = pipe(**gen_kwargs).images
         sync()
         t1 = time.perf_counter()
-        # logger.debug("[bench_diffusers_edit] pipe(...) done")
+        logger.debug("[bench_diffusers_edit] pipe(...) done")
 
         e2et = t1 - t0
         peak_mb = cal_peak_mb()
@@ -357,17 +356,19 @@ def main():
         # pipe = pipe.to(DEVICE)
         pipe = None
         # run vllm + diffusers
+        warmup = 0
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
-                # warmup (not measured)
-                for _ in range(WARMUP):
-                    bench_vllm_and_diffusers(llm, pipe, bs, sl)
 
                 # measured runs
                 results = []
                 for run_idx in range(RUNS):
                     iters = 0
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
+                        if warmup == 0:
+                            warmup += 1
+                            logger.info({"[vllm] warmup run, "**v_res})
+                            continue
                         logger.info(
                             {"run": run_idx + 1, "iter": iters + 1, **v_res})
                         if type(d_res) is not str:
