@@ -338,6 +338,7 @@ def main():
             model=MODEL_VL,
             limit_mm_per_prompt={"image": 1},
             enforce_eager=True,
+            attention_backend="flash-attn"
         )
         # attention_backend="flash-attn"
         print(type(llm.llm_engine).__module__)
@@ -388,9 +389,9 @@ def main():
                     #     "diffusers_avg_E2ET_s": round(avg_diff_e2e, 4),
                     # })
 
-    # print("-" * 100)
-    # print("Done")
-    # print("-" * 100)
+    print("-" * 100)
+    print("Done")
+    print("-" * 100)
 
 
 if __name__ == "__main__":
