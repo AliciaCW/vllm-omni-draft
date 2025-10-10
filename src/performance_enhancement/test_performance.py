@@ -3,6 +3,7 @@ import os
 import json
 import time
 import random
+import logging
 from typing import List, Tuple
 
 import torch
@@ -38,6 +39,13 @@ SEED = 42
 random.seed(SEED)
 torch.manual_seed(SEED)
 
+# logging setup: default INFO; DEBUG logs are hidden unless explicitly enabled
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 
 def sync():
     if torch.cuda.is_available():
@@ -66,7 +74,7 @@ def cal_peak_mb() -> float:
 #     return extended_prompts
 
 def extend_prompts(prompts: List[str], edit_types: List[str], target_seq_len: int) -> List[str]:
-    print("[extend_prompts] extending prompts")
+    logger.debug("[extend_prompts] extending prompts")
     extended_prompts: List[str] = []
     neutral_words = ["you", "are", "powerful"]
     for base_prompt, edit_type in zip(prompts, edit_types):
@@ -220,13 +228,13 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
 def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
     # Build text prompts (seq_len control) + open the same image N times for a batch
     for images, prompts, edit_types in load_images(batch_size):
-        print(
+        logger.debug(
             f"[bench_diffusers_edit] loaded images/prompts | n={len(images)}")
 
         generator = torch.Generator(device=DEVICE).manual_seed(SEED)
 
         if MOCK_TEST:
-            print(
+            logger.debug(
                 "[bench_diffusers_edit] use mock test, generating random prompt_embeds")
             prompt_embeds = torch.randn(
                 batch_size, seq_len, QWEN_VL_INPUT_TOKENS, device=DEVICE, dtype=DTYPE)
@@ -243,7 +251,8 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             }
         else:
             # Batch-level extension and safety cap for rotary constraints
-            print("[bench_diffusers_edit] do not use mock test, extending prompts")
+            logger.debug(
+                "[bench_diffusers_edit] do not use mock test, extending prompts")
             rewrite_prompts = extend_prompts(prompts, edit_types, seq_len)
             # print("[bench_diffusers_edit] prompts extended")
             gen_kwargs = {
@@ -257,7 +266,7 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
 
         sync()
         reset_peak()
-        # print("[bench_diffusers_edit] calling pipe(...) ...")
+        # logger.debug("[bench_diffusers_edit] calling pipe(...) ...")
         t0 = time.perf_counter()
 
         # 对每个prompt进行tokenization（不进行实际编码）
@@ -267,7 +276,7 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
         _ = pipe(**gen_kwargs).images
         sync()
         t1 = time.perf_counter()
-        # print("[bench_diffusers_edit] pipe(...) done")
+        # logger.debug("[bench_diffusers_edit] pipe(...) done")
 
         e2et = t1 - t0
         peak_mb = cal_peak_mb()
@@ -283,9 +292,6 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             max(e2et, 1e-6)
         throughput_qwen_vl_input_tokens_per_prompt = throughput_qwen_vl_input_tokens_per_s / \
             max(batch_size, 1)
-
-        # print(
-        #     f"[bench_diffusers_edit] metrics | e2e={e2et:.3f}s, peakMB={peak_mb:.1f}, throughput={throughput_images_per_s:.2f} img/s, tokens={throughput_tokens_per_s:.2f} tok/s")
 
         yield {
             "phase": "diffusers_edit",
@@ -309,16 +315,16 @@ def main():
     # print("Running  test")
 
     if RUN_DIFFUSERS_TEST == 1:
-        print("RUN_DIFFUSERS_TEST", RUN_DIFFUSERS_TEST)
-        print("MOCK_TEST", MOCK_TEST)
+        logger.info("RUN_DIFFUSERS_TEST %s", RUN_DIFFUSERS_TEST)
+        logger.info("MOCK_TEST %s", MOCK_TEST)
         os.environ["DIFFUSERS_ENABLE_HUB_KERNELS"] = "yes"
         pipe = QwenImageEditPipeline.from_pretrained(
             MODEL_EDIT, torch_dtype=DTYPE)
         pipe = pipe.to(DEVICE)
         pipe.transformer.set_attention_backend("_flash_3_hub")
         # pipe.transformer.set_attention_backend("flash")  # FA2
-        print("[diffusers] set attention backend to _flash_3_hub")
-        # print(f"[main] diffusers pipe loaded | device={DEVICE}")
+        logger.info("[diffusers] set attention backend to _flash_3_hub")
+        logger.info(f"[main] diffusers pipe loaded | device={DEVICE}")
 
         results = []
         for bs in BATCH_SIZES:
@@ -326,13 +332,14 @@ def main():
                 for run_idx in range(RUNS):
                     iters = 0
                     for res in bench_diffusers_edit(pipe, bs, sl):
-                        print({"run": run_idx + 1, "iter": iters + 1, **res})
+                        logger.info(
+                            {"run": run_idx + 1, "iter": iters + 1, **res})
                         results.append({**res, "run": run_idx + 1})
                         iters += 1
         # print(results)
 
     if RUN_VLLM_DIFFUSERS_TEST == 1:
-        print("RUN_VLLM_DIFFUSERS_TEST", RUN_VLLM_DIFFUSERS_TEST)
+        logger.info("RUN_VLLM_DIFFUSERS_TEST %s", RUN_VLLM_DIFFUSERS_TEST)
         from vllm import LLM
         llm = LLM(
             model=MODEL_VL,
@@ -341,9 +348,9 @@ def main():
             attention_backend="flash-attn"
         )
         # attention_backend="flash-attn"
-        print(type(llm.llm_engine).__module__)
+        logger.debug("[vllm] llm engine %s", type(llm.llm_engine).__module__)
         attn_backend = getattr(llm.llm_engine, "attention_backend", None)
-        print("[vllm] llm.attention_backend", attn_backend)
+        logger.debug("[vllm] llm.attention_backend %s", attn_backend)
 
         # pipe = QwenImageEditPipeline.from_pretrained(
         #     MODEL_EDIT, torch_dtype=DTYPE)
@@ -361,9 +368,11 @@ def main():
                 for run_idx in range(RUNS):
                     iters = 0
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
-                        print({"run": run_idx + 1, "iter": iters + 1, **v_res})
+                        logger.info(
+                            {"run": run_idx + 1, "iter": iters + 1, **v_res})
                         if type(d_res) is not str:
-                            print({"run": run_idx + 1, "iter": iters + 1, **d_res})
+                            logger.info(
+                                {"run": run_idx + 1, "iter": iters + 1, **d_res})
                         results.append({"vllm": v_res, "diff": d_res})
                         iters += 1
 
@@ -389,9 +398,9 @@ def main():
                     #     "diffusers_avg_E2ET_s": round(avg_diff_e2e, 4),
                     # })
 
-    print("-" * 100)
-    print("Done")
-    print("-" * 100)
+    logger.info("%s", "-" * 100)
+    logger.info("Done")
+    logger.info("%s", "-" * 100)
 
 
 if __name__ == "__main__":
