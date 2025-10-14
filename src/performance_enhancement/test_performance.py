@@ -21,6 +21,7 @@ MOCK_TEST = int(os.environ.get("MOCK_TEST")) if os.environ.get(
 EARLY_STOP = int(os.environ.get("EARLY_STOP")) if os.environ.get(
     "EARLY_STOP") else 1
 NUM_SAMPLES = 8
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.bfloat16
 QWEN_VL_INPUT_TOKENS = 3584
@@ -30,10 +31,8 @@ DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
     "DATA_DIR") else "/home/dyvm6xra/dyvm6xrauser08/alicia/data/imgedit_data/Benchmark/singleturn"
 
 BATCH_SIZES = [2, 4]
-SEQ_LENS = [512, 1024]
-MOCK_SEQ_LEN = [1894, 1897, 1900, 1893, 2406,
-                2409, 2412, 2405, 1897, 1900, 2409, 2412]
-m = 0
+PROMPT_SEQ_LENS = [512, 2048, 4096]
+MOCK_SEQ_LEN = [1900, 3436, 5484]
 MAX_NEW_TOKENS = 32
 RUNS = 1
 SEED = 42
@@ -226,7 +225,7 @@ def bench_vllm_and_diffusers(llm, pipe: QwenImageEditPipeline, batch_size: int, 
         yield vllm_result, "No diffusers result"
 
 
-def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: int):
+def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: int, mock_seq_len: int):
     # Build text prompts (seq_len control) + open the same image N times for a batch
     for images, prompts, edit_types in load_images(batch_size):
         logger.debug(
@@ -238,8 +237,7 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             logger.debug(
                 "[bench_diffusers_edit] use mock test, generating random prompt_embeds")
             prompt_embeds = torch.randn(
-                batch_size, MOCK_SEQ_LEN, QWEN_VL_INPUT_TOKENS, device=DEVICE, dtype=DTYPE)
-            m += 1
+                batch_size, mock_seq_len, QWEN_VL_INPUT_TOKENS, device=DEVICE, dtype=DTYPE)
             prompt_embeds_mask = torch.ones(
                 prompt_embeds.shape[0], prompt_embeds.shape[1], device=DEVICE, dtype=torch.bool)
             gen_kwargs = {
@@ -298,7 +296,6 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
         yield {
             "phase": "diffusers_edit",
             "batch_size": batch_size,
-            "seq_len": seq_len,
             "E2ET_s": round(e2et, 4),
             "PeakMem_MB": round(peak_mb, 1),
             "Throughput_ImagesPerS": round(throughput_images_per_s, 2),
@@ -335,14 +332,24 @@ def main():
 
         results = []
         for bs in BATCH_SIZES:
-            for sl in SEQ_LENS:
-                for run_idx in range(RUNS):
-                    iters = 0
-                    for res in bench_diffusers_edit(pipe, bs, sl):
-                        logger.info(
-                            {"run": run_idx + 1, "iter": iters + 1, **res})
-                        results.append({**res, "run": run_idx + 1})
-                        iters += 1
+            if MOCK_TEST:
+                for msl in MOCK_SEQ_LEN:
+                    for run_idx in range(RUNS):
+                        iters = 0
+                        for res in bench_diffusers_edit(pipe, bs, None, msl):
+                            logger.info(
+                                {"run": run_idx + 1, "mock_seq_len": msl, "iter": iters + 1, **res})
+                            results.append({**res, "run": run_idx + 1})
+                            iters += 1
+            else:
+                for sl in PROMPT_SEQ_LENS:
+                    for run_idx in range(RUNS):
+                        iters = 0
+                        for res in bench_diffusers_edit(pipe, bs, sl, None):
+                            logger.info(
+                                {"run": run_idx + 1, "prompt_seq_len": sl, "iter": iters + 1, **res})
+                            results.append({**res, "run": run_idx + 1})
+                            iters += 1
         # print(results)
 
     if RUN_VLLM_DIFFUSERS_TEST == 1:
@@ -361,7 +368,7 @@ def main():
         # run vllm + diffusers
         warmup = 0
         for bs in BATCH_SIZES:
-            for sl in SEQ_LENS:
+            for sl in PROMPT_SEQ_LENS:
 
                 # measured runs
                 results = []
@@ -370,7 +377,7 @@ def main():
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
                         if warmup == 0:
                             warmup += 1
-                            logger.info({"[vllm] warmup run, "**v_res})
+                            logger.info({"[vllm] warmup run", **v_res})
                             continue
                         logger.info(
                             {"run": run_idx + 1, "iter": iters + 1, **v_res})
