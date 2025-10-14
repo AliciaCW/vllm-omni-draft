@@ -14,7 +14,7 @@ E2ET, End-to-End Latency
 more: Throughput, req/s tok/s
 
 ## vLLM + Qwen-Image
-[images/arch.png](!images/arch.png)
+[images/arch.png](images/arch.png)
 
 There are three major components in Qwen-Image,
 
@@ -33,15 +33,38 @@ From the Qwen-Image paper:
     general image generation: GenEval, DPG, OneIG-Bench 
     image editing: GEdit, ImgEdit, and GSO
 
-Here we select ImageEdit for our test, to more specifically, we choose removal subtask (belongs to single turn task) with Parquet/remove_part0.parquet and Singleturn/remove_part0.tar* data.
+Here we select ImageEdit for our test, to more specifically, we use the benchmark-singleturn part of dataset.
+
+For single-turn task, it contains 9 categories, 9 edit sub-tasks,  700+ samples in total.
+Categories: animal, architecture, clothes, compose, daily object, for_add, human, style, transport.
+Sub-tasks: replace, add, adjust, remove, style, action, extract, background, compose.
+
+Data example: 
+{
+    "1082": {
+        "id": "animal/000342021.jpg",
+        "prompt": "Change the tortoise's shell texture to a smooth surface.",
+        "edit_type": "adjust"
+    },
+    "1068": {
+        "id": "animal/000047206.jpg",
+        "prompt": "Change the animal's fur color to a darker shade.",
+        "edit_type": "adjust"
+    },
+    "673": {
+        "id": "style/000278574.jpg",
+        "prompt": "Transfer the image into a traditional ukiyo-e woodblock-print style.",
+        "edit_type": "style"
+    }
+}
+
 
 Download dataset:
 
 ```bash
 huggingface-cli download --repo-type dataset \
     sysuyy/ImgEdit \
-    --include "Parquet/remove_part0.parquet" \
-    --include "Singleturn/results_remove_part0.tar*" \
+    --include "benchmark.tar" \
     --local-dir ./imgedit_data
 ```
 
@@ -54,4 +77,5 @@ huggingface-cli download Qwen/Qwen-Image-Edit
 
 
 ### edit locations:
-vllm/vllm/model_executor/models/registry.py
+vllm/v1/worker/gpu_model_runner.py 
+/diffusers/pipelines/qwenimage/pipeline_qwenimage_edit.py

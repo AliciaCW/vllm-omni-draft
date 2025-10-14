@@ -8,7 +8,6 @@ from typing import List, Tuple
 
 import torch
 from PIL import Image
-
 from diffusers import QwenImageEditPipeline
 
 RUN_DIFFUSERS_TEST = int(os.environ.get("RUN_DIFFUSERS_TEST")) if os.environ.get(
@@ -321,9 +320,14 @@ def main():
             MODEL_EDIT, torch_dtype=DTYPE)
         pipe = pipe.to(DEVICE)
         pipe.transformer.set_attention_backend("_flash_3_hub")
-        # pipe.transformer.set_attention_backend("flash")  # FA2
         logger.info("[diffusers] set attention backend to _flash_3_hub")
         logger.info(f"[main] diffusers pipe loaded | device={DEVICE}")
+        num_params_dit = sum(p.numel() for p in pipe.transformer.parameters())
+        num_params_qwen25vl = sum(p.numel()
+                                  for p in pipe.text_encoder.parameters())
+        print(pipe)
+        logger.info(f"[main] num_params_qwen25vl: {num_params_qwen25vl}")
+        logger.info(f"[main] num_params_dit: {num_params_dit}")
 
         results = []
         for bs in BATCH_SIZES:
@@ -350,9 +354,11 @@ def main():
         logger.info("[vllm] llm engine %s", type(llm.llm_engine).__module__)
         attn_backend = getattr(llm.llm_engine, "attention_backend", None)
         logger.info("[vllm] llm.attention_backend %s", attn_backend)
+        num_params = sum(p.numel() for p in llm.llm_engine.parameters())
+        print(llm.llm_engine)
+        logger.info(f"[vllm] num_params: {num_params}")
 
-        # pipe = QwenImageEditPipeline.from_pretrained(
-        #     MODEL_EDIT, torch_dtype=DTYPE)
+        # pipe = QwenImageEditPipeline.from_pretrained(MODEL_EDIT, torch_dtype=DTYPE)
         # pipe = pipe.to(DEVICE)
         pipe = None
         # run vllm + diffusers
