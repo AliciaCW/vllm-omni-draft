@@ -13,6 +13,9 @@ E2ET, End-to-End Latency
 
 Throughput, req/s tok/s
 
+## Tokens we count:
+
+
 
 
 ## vLLM + Qwen-Image
@@ -41,6 +44,7 @@ For single-turn task, it contains 9 categories, 9 edit sub-tasks,  700+ samples 
 Categories: animal, architecture, clothes, compose, daily object, for_add, human, style, transport.
 Sub-tasks: replace, add, adjust, remove, style, action, extract, background, compose.
 
+```json
 Data example: 
 {
     "1082": {
@@ -59,7 +63,7 @@ Data example:
         "edit_type": "style"
     }
 }
-
+```
 
 Download dataset:
 
@@ -71,6 +75,7 @@ huggingface-cli download --repo-type dataset \
 ```
 
 Weight: https://huggingface.co/Qwen/Qwen-Image-Edit
+
 Download model weight:
 
 ```bash

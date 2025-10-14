@@ -30,7 +30,7 @@ DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
     "DATA_DIR") else "/home/dyvm6xra/dyvm6xrauser08/alicia/data/imgedit_data/Benchmark/singleturn"
 
 BATCH_SIZES = [2, 4]
-SEQ_LENS = [128, 512]
+SEQ_LENS = [512, 1024]
 MAX_NEW_TOKENS = 32
 RUNS = 1
 SEED = 42
@@ -235,7 +235,7 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             logger.debug(
                 "[bench_diffusers_edit] use mock test, generating random prompt_embeds")
             prompt_embeds = torch.randn(
-                batch_size, seq_len, QWEN_VL_INPUT_TOKENS, device=DEVICE, dtype=DTYPE)
+                batch_size, 1510, QWEN_VL_INPUT_TOKENS, device=DEVICE, dtype=DTYPE)
             prompt_embeds_mask = torch.ones(
                 prompt_embeds.shape[0], prompt_embeds.shape[1], device=DEVICE, dtype=torch.bool)
             gen_kwargs = {
@@ -348,12 +348,8 @@ def main():
             model=MODEL_VL,
             limit_mm_per_prompt={"image": 1},
             enforce_eager=True,
-            # attention_backend="flash-attn"
         )
-        # attention_backend="flash-attn"
         logger.info("[vllm] llm engine %s", type(llm.llm_engine).__module__)
-        attn_backend = getattr(llm.llm_engine, "attention_backend", None)
-        logger.info("[vllm] llm.attention_backend %s", attn_backend)
         num_params = sum(p.numel() for p in llm.llm_engine.worker.parameters())
         print(llm.llm_engine)
         logger.info(f"[vllm] num_params: {num_params}")
