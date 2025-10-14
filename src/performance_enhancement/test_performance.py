@@ -31,6 +31,8 @@ DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
 
 BATCH_SIZES = [2, 4]
 SEQ_LENS = [512, 1024]
+MOCK_SEQ_LEN = [1894, 1897, 1900, 1893, 2406,
+                2409, 2412, 2405, 1897, 1900, 2409, 2412]
 MAX_NEW_TOKENS = 32
 RUNS = 1
 SEED = 42
@@ -235,7 +237,8 @@ def bench_diffusers_edit(pipe: QwenImageEditPipeline, batch_size: int, seq_len: 
             logger.debug(
                 "[bench_diffusers_edit] use mock test, generating random prompt_embeds")
             prompt_embeds = torch.randn(
-                batch_size, 1510, QWEN_VL_INPUT_TOKENS, device=DEVICE, dtype=DTYPE)
+                batch_size, MOCK_SEQ_LEN, QWEN_VL_INPUT_TOKENS, device=DEVICE, dtype=DTYPE)
+            m += 1
             prompt_embeds_mask = torch.ones(
                 prompt_embeds.shape[0], prompt_embeds.shape[1], device=DEVICE, dtype=torch.bool)
             gen_kwargs = {
@@ -350,9 +353,6 @@ def main():
             enforce_eager=True,
         )
         logger.info("[vllm] llm engine %s", type(llm.llm_engine).__module__)
-        num_params = sum(p.numel() for p in llm.llm_engine.worker.parameters())
-        print(llm.llm_engine)
-        logger.info(f"[vllm] num_params: {num_params}")
 
         # pipe = QwenImageEditPipeline.from_pretrained(MODEL_EDIT, torch_dtype=DTYPE)
         # pipe = pipe.to(DEVICE)
