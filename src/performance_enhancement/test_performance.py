@@ -341,6 +341,7 @@ def main():
                                 {"run": run_idx + 1, "mock_seq_len": msl, "iter": iters + 1, **res})
                             results.append({**res, "run": run_idx + 1})
                             iters += 1
+                            logger.info("%s", "-" * 100)
             else:
                 for sl in PROMPT_SEQ_LENS:
                     for run_idx in range(RUNS):
@@ -350,6 +351,7 @@ def main():
                                 {"run": run_idx + 1, "prompt_seq_len": sl, "iter": iters + 1, **res})
                             results.append({**res, "run": run_idx + 1})
                             iters += 1
+                            logger.info("%s", "-" * 100)
         # print(results)
 
     if RUN_VLLM_DIFFUSERS_TEST == 1:
@@ -386,6 +388,7 @@ def main():
                                 {"run": run_idx + 1, "iter": iters + 1, **d_res})
                         results.append({"vllm": v_res, "diff": d_res})
                         iters += 1
+                        logger.info("%s", "-" * 100)
 
                 # aggregate simple averages
                 if results:
