@@ -11,7 +11,9 @@ TPOT, Time Per Output Token
 
 E2ET, End-to-End Latency
 
-more: Throughput, req/s tok/s
+Throughput, req/s tok/s
+
+
 
 ## vLLM + Qwen-Image
 [images/arch.png](images/arch.png)

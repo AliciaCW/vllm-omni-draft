@@ -354,7 +354,7 @@ def main():
         logger.info("[vllm] llm engine %s", type(llm.llm_engine).__module__)
         attn_backend = getattr(llm.llm_engine, "attention_backend", None)
         logger.info("[vllm] llm.attention_backend %s", attn_backend)
-        num_params = sum(p.numel() for p in llm.llm_engine.parameters())
+        num_params = sum(p.numel() for p in llm.llm_engine.worker.parameters())
         print(llm.llm_engine)
         logger.info(f"[vllm] num_params: {num_params}")
 
