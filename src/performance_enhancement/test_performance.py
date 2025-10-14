@@ -31,8 +31,8 @@ DATA_DIR = os.environ.get("DATA_DIR") if os.environ.get(
     "DATA_DIR") else "/home/dyvm6xra/dyvm6xrauser08/alicia/data/imgedit_data/Benchmark/singleturn"
 
 BATCH_SIZES = [2, 4]
-PROMPT_SEQ_LENS = [512, 2048, 4096]
-MOCK_SEQ_LEN = [1900, 3436, 5484]
+PROMPT_SEQ_LENS = [512, 2048, 2560]  # SEQ_LEN ~= PROMPT_SEQ_LENS + 1388
+MOCK_SEQ_LEN = [1900, 3436, 3948]  # max 4064
 MAX_NEW_TOKENS = 32
 RUNS = 1
 SEED = 42
@@ -377,7 +377,7 @@ def main():
                     for v_res, d_res in bench_vllm_and_diffusers(llm, pipe, bs, sl):
                         if warmup == 0:
                             warmup += 1
-                            logger.info({"[vllm] warmup run", **v_res})
+                            logger.info({"[vllm] warmup run"})
                             continue
                         logger.info(
                             {"run": run_idx + 1, "iter": iters + 1, **v_res})
