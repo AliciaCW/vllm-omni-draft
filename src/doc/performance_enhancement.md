@@ -68,9 +68,9 @@ Data example:
 Download dataset:
 
 ```bash
-huggingface-cli download --repo-type dataset \
+hf download --repo-type dataset \
     sysuyy/ImgEdit \
-    --include "benchmark.tar" \
+    --include "Benchmark.tar" \
     --local-dir ./imgedit_data
 ```
 
