@@ -88,14 +88,14 @@ Total_VRAM = Model_Memory + KV_Cache + Activation + Overhead
 
 # 模型权重显存
 Model_Memory = 参数数量 × 每参数字节数
-# 例如：7B参数，FP16精度 → 7e9 × 2 = 14 GB
+# 例如：7B参数，FP8精度 → 7e9 × 1 = 7 GB
 
-# KV缓存显存（自回归解码的关键）
+# KV缓存显存
 KV_Cache = 2 × batch_size × seq_len × layers × hidden_dim × 数据类型大小
 
 # 激活值显存（推理时可优化）
 Activation = batch_size × seq_len × hidden_dim × 激活值系数 × 数据类型大小
-# 激活值系数范围：8-12，取决于模型架构
+# 激活值系数范围：取决于模型架构
 
 
 # DiT 
@@ -109,11 +109,11 @@ seq_len = (image_size / patch_size)²
 # 激活值显存（注意：这里seq_len是图像patch序列）
 Activation_Memory = batch_size × seq_len × hidden_dim × 激活值系数 × 数据类型大小
 
-# KV缓存显存（DiT中可能用于条件注意力）
+# KV缓存显存（DiT中用于条件注意力）
 KV_Cache = 2 × batch_size × seq_len × num_layers × hidden_dim × 数据类型大小
 
 # 扩散过程特有状态
-Diffusion_States = batch_size × num_timesteps_kept × latent_dim × 数据类型大小
+Diffusion_States = batch_size × num_timesteps × latent_dim × 数据类型大小
 # 包括：噪声预测、潜在状态、采样器状态等
 
 ```
