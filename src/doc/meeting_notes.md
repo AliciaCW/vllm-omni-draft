@@ -1,0 +1,22 @@
+20251021 vllm-omni 会议记录
+
+- vllm-omni pr:
+    - @hs：pr内文件太多（70+），需要拆分后再review，后续讨论怎么拆
+    - pr介绍：
+        - 目前是支持离线推理  包含框架部分和模型部分的代码
+        - 基于vllm 8月份的分支开发的，后续需要升级
+        - 流式多请求和在线推理，后续需要支持
+        - diffusion侧的内存管理，每次重新申请 用完再回收，后续需要考虑更加用户友好的内存管理策略
+        - 目前qwen2.5 omni的diffusion模型没有使用diffuser，后续我们的方案应该是支持基于diffusers的模型和不基于它的
+        - @hs：pr介绍需要增加内存管理的介绍，diffusion模型支持diffusers和原生
+        - @hs：有没有scheduler，管理batch的？
+            - 介绍了一下ar+dit之外应该有一个proxy管理请求，面对请求等待的时候的处理
+            - 核心问题是queue和memory的管理，因为后续会有一堆不同connector 需要管理 -》 全分离架构支持
+        - omni_lm short for large model
+        - 介绍了服务启动入口和模型config yaml文件，目前只能encore_eager启动，scheduler是继承vllm的，-> omni_scheduler （适配ar模型 thinker talker） -> diffusion_scheduler （适配diffusion）  ->代表继承关系
+        - @hs: omni_llm和class OmniLLM的名字需要改一下，容易混淆
+        - stage: 大部分都能支持，除了omni中的有一个stage需要的输入太复杂
+        - @hs: 需要原生支持生成Ascend （vLLM Ascend现在已经不包含模型了，我们重点在模型，不依赖 vLLM Ascend）； 支持cmpute graph compile/capture
+        - @hs：支持qwen 3 omni
+        - @hs：pr拆分完，要在本地测试后再提
+    - 以后主流模型就是omni  做下一代的事情

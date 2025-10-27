@@ -79,7 +79,7 @@ Weight: https://huggingface.co/Qwen/Qwen-Image-Edit
 Download model weight:
 
 ```bash
-huggingface-cli download Qwen/Qwen-Image-Edit
+hf download Qwen/Qwen-Image-Edit
 ```
 
 
