@@ -111,8 +111,8 @@ Activation = batch_size × seq_len × hidden_dim × 激活值系数 × 数据类
 
 
 # DiT 
-# 总显存 = 模型权重 + 激活值 + KV缓存 + 扩散状态 + 框架开销
-Total_VRAM = Model_Memory + Activation_Memory + KV_Cache + Diffusion_States + Overhead
+# 总显存 = 模型权重 + 激活值 + 扩散状态 + 框架开销
+Total_VRAM = Model_Memory + Activation_Memory + Diffusion_States + Overhead
 
 # 序列长度计算（图像patch序列）
 seq_len = (image_size / patch_size)²
@@ -120,9 +120,6 @@ seq_len = (image_size / patch_size)²
 
 # 激活值显存（注意：这里seq_len是图像patch序列）
 Activation_Memory = batch_size × seq_len × hidden_dim × 激活值系数 × 数据类型大小
-
-# KV缓存显存（DiT中用于条件注意力）
-KV_Cache = 2 × batch_size × seq_len × num_layers × hidden_dim × 数据类型大小
 
 # 扩散过程特有状态
 Diffusion_States = batch_size × num_timesteps × latent_dim × 数据类型大小
@@ -184,6 +181,7 @@ dtype: bf16
 - prompt length: [512, 2048, 2560]
 - input image size: [1024*1024, ..]
 - output image size: [1376*768, ..]
+- timesteps: 50 by default
 
 ### 性能数据记录
 
