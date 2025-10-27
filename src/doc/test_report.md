@@ -68,14 +68,22 @@
 
 
 ```python
+# AR
 # 总延迟 = Prefill延迟 + Decode延迟
 Total_Latency = T_prefill + N_tokens × T_per_token
-
 # Prefill阶段：受计算瓶颈限制
 T_prefill ≈ (模型FLOPs × 序列长度) / GPU峰值FLOPS
-
 # Decode阶段：受内存带宽限制  
 T_per_token ≈ (KV缓存大小 + 权重大小) / GPU内存带宽
+
+
+
+#DiT
+# DiT性能模型
+Total_Latency = T_encoder + N_steps × T_denoise_step + T_decoder
+
+# 其中：
+T_denoise_step = T_patch_embed + T_transformer_forward + T_condition_fusion
 ```
 
 - 显存需求：
