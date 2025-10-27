@@ -65,7 +65,9 @@
 
 
 - 性能： 由于是分离架构，需要分别计算AR部分和DiT部分的性能，并考虑两者之间的数据传输（如果分布在不同的设备上）。AR部分主要是自回归生成，DiT部分则是扩散模型的多步去噪。每个步骤的计算量可以通过模型参数量和输入输出大小来估算。
-
+    对于数据传输，可以考虑优化方向:
+    流水线并行：将AR和DiT部署在不同的设备上，使得AR和DiT可以重叠执行。例如，当AR生成一部分输出后，就可以开始DiT过程，而不需要等待AR完全生成完毕。
+    数据传输优化：使用高速互联（如NVLink、InfiniBand）来减少设备间通信的延迟。
 
 ```python
 
@@ -73,8 +75,8 @@ Total_Latency = T_AR + T_data_transfer + T_DiT
 
 
 # AR
-# 总延迟 = Prefill延迟 + Decode延迟
-Total_Latency = T_prefill + N_tokens × T_per_token
+# 延迟 = Prefill延迟 + Decode延迟
+T_AR = T_prefill + N_tokens × T_per_token
 # Prefill阶段：受计算瓶颈限制
 T_prefill ≈ (模型FLOPs × 序列长度) / GPU峰值FLOPS
 # Decode阶段：受内存带宽限制  
@@ -82,9 +84,8 @@ T_per_token ≈ (KV缓存大小 + 权重大小) / GPU内存带宽
 
 
 
-#DiT
-# DiT性能模型
-Total_Latency = T_encoder + N_steps × T_denoise_step + T_decoder
+# DiT
+T_DiT = T_encoder + N_steps × T_denoise_step + T_decoder
 # 其中：
 T_denoise_step = T_patch_embed + T_transformer_forward + T_condition_fusion
 ```
