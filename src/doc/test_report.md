@@ -13,6 +13,7 @@
 除性能测试外，还需要考虑核心功能验证测试，以确保系统的基本功能正常。
 
 **分离式架构性能测试：**
+
 验证我们的分离式架构对比原始模型在延迟，吞吐量以及资源使用上都有所提升。
 
 **分离式架构流程测试：**
@@ -86,7 +87,6 @@ T_per_token ≈ (KV缓存大小 + 权重大小) / GPU内存带宽
 Total_VRAM = Model_Memory + KV_Cache + Activation + Overhead
 # 模型权重显存
 Model_Memory = 参数数量 × 每参数字节数（FP8=1字节）
-
 # KV缓存显存
 KV_Cache = 2 × batch_size × seq_len × layers × hidden_dim × 数据类型大小
 
@@ -95,7 +95,6 @@ KV_Cache = 2 × batch_size × seq_len × layers × hidden_dim × 数据类型大
 
 # DiT 显存
 Total_VRAM = Model_Memory + Activation_Memory + KV_Cache + Diffusion_States + Overhead
-
 Activation_Memory = batch_size × seq_len × hidden_dim × 激活值系数 × 数据类型大小
 KV_Cache = 2 × batch_size × seq_len × num_layers × hidden_dim × 数据类型大小
 # 对于图像patch序列
