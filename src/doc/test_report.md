@@ -82,24 +82,39 @@ T_per_token ≈ (KV缓存大小 + 权重大小) / GPU内存带宽
     分别计算AR模型和DiT模型的参数显存。模型的参数所占显存可以通过参数数量乘以每个参数所占字节数来计算。对于推理，AR模型主要考虑参数和KV缓存；对于DiT模型，显存需求还与采样步数有关。实际推理测试中，Qwen Image Edit加载后使用的显存可以达到70G。
 
 ```python
-
+# AR
 # 总显存 = 模型权重 + KV缓存 + 激活值 + 框架开销
 Total_VRAM = Model_Memory + KV_Cache + Activation + Overhead
+
 # 模型权重显存
-Model_Memory = 参数数量 × 每参数字节数（FP8=1字节）
-# KV缓存显存
+Model_Memory = 参数数量 × 每参数字节数
+# 例如：7B参数，FP16精度 → 7e9 × 2 = 14 GB
+
+# KV缓存显存（自回归解码的关键）
 KV_Cache = 2 × batch_size × seq_len × layers × hidden_dim × 数据类型大小
 
+# 激活值显存（推理时可优化）
+Activation = batch_size × seq_len × hidden_dim × 激活值系数 × 数据类型大小
+# 激活值系数范围：8-12，取决于模型架构
 
 
-
-# DiT 显存
+# DiT 
+# 总显存 = 模型权重 + 激活值 + KV缓存 + 扩散状态 + 框架开销
 Total_VRAM = Model_Memory + Activation_Memory + KV_Cache + Diffusion_States + Overhead
-Activation_Memory = batch_size × seq_len × hidden_dim × 激活值系数 × 数据类型大小
-KV_Cache = 2 × batch_size × seq_len × num_layers × hidden_dim × 数据类型大小
-# 对于图像patch序列
+
+# 序列长度计算（图像patch序列）
 seq_len = (image_size / patch_size)²
+# 例如：256×256图像，patch_size=16 → seq_len = 256
+
+# 激活值显存（注意：这里seq_len是图像patch序列）
+Activation_Memory = batch_size × seq_len × hidden_dim × 激活值系数 × 数据类型大小
+
+# KV缓存显存（DiT中可能用于条件注意力）
+KV_Cache = 2 × batch_size × seq_len × num_layers × hidden_dim × 数据类型大小
+
+# 扩散过程特有状态
 Diffusion_States = batch_size × num_timesteps_kept × latent_dim × 数据类型大小
+# 包括：噪声预测、潜在状态、采样器状态等
 
 ```
 
