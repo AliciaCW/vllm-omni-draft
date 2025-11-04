@@ -1,0 +1,16 @@
+# CODEOWNERS 文件用于自动分配 PR reviewer
+# 格式：路径 pattern @用户名或团队名
+# 更多信息：https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# 默认所有者（所有文件的默认 reviewer）
+* @owner1
+
+# 按目录分配 reviewer
+/.github/ @owner1
+/tests/ @owner1
+/docs/ @owner1
+
+# 示例：特定目录的 reviewer
+# /vllm_omni/core/ @core-team
+# /vllm_omni/model_executor/ @model-team
+
