@@ -107,14 +107,14 @@
 
 ## 测试文件总览
 
-| 文件路径 | 文件数量 | 主要功能 | 测试类型 |
-|---------|---------|---------|---------|
-| `test_processing_omni.py` | 1 | 单元测试：图像/视频处理核心函数 | Unit |
-| `test_qwen2_5_omni_integration.py` | 1 | 集成测试：端到端推理流程 | Integration |
-| `conftest.py` | 1 | 测试配置：共享 fixtures 和工具 | Test Config |
-| `utils.py` | 1 | 测试工具：生成测试数据的辅助函数 | Test Utils |
-| `assets/` | 1 | 测试资源：静态图片/视频文件 | Test Assets |
-| **总计** | **5** | - | - |
+| 文件路径                           | 文件数量 | 主要功能                         | 测试类型    |
+| ---------------------------------- | -------- | -------------------------------- | ----------- |
+| `test_processing_omni.py`          | 1        | 单元测试：图像/视频处理核心函数  | Unit        |
+| `test_qwen2_5_omni_integration.py` | 1        | 集成测试：端到端推理流程         | Integration |
+| `conftest.py`                      | 1        | 测试配置：共享 fixtures 和工具   | Test Config |
+| `utils.py`                         | 1        | 测试工具：生成测试数据的辅助函数 | Test Utils  |
+| `assets/`                          | 1        | 测试资源：静态图片/视频文件      | Test Assets |
+| **总计**                           | **5**    | -                                | -           |
 
 ---
 
