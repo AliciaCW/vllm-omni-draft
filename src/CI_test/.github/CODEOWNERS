@@ -11,6 +11,6 @@
 /docs/ @owner1
 
 # Example: reviewers for specific directories
+# /examples/offline_inference/ @offline-inference-team
 # /vllm_omni/core/ @core-team
 # /vllm_omni/model_executor/ @model-team
-

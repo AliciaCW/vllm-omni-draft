@@ -1,6 +1,6 @@
 ## CI Workflows Overview
 
-This PR introduces three GitHub Actions workflows to standardize CI for the repository. These files are currently placed under `src/CI_test/.github/workflows/` and can be moved to the repository root at `.github/workflows/` when ready to enable them.
+This PR introduces three GitHub Actions workflows to standardize CI for the repository. 
 
 ### ci.yml
 - Purpose: Run test suite across multiple Python versions.
