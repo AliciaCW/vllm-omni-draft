@@ -3,7 +3,7 @@
 This PR introduces three GitHub Actions workflows to standardize CI for the repository. 
 
 ### ci.yml
-- Purpose: Run test suite across multiple Python versions.
+- Purpose: Run the full test suite across multiple Python versions; default workflow for pushes and PRs.
 - Triggers: `push` (branch: dev_CI), `pull_request` (into main), and manual `workflow_dispatch`.
 - Key steps:
   - Checkout repository.
@@ -13,6 +13,19 @@ This PR introduces three GitHub Actions workflows to standardize CI for the repo
 - Stability:
   - `timeout-minutes: 30` to avoid hanging jobs.
   - `strategy.fail-fast: false` to allow all matrix runs to complete.
+
+### ci-changed-files.yml
+- Purpose: Run targeted tests only for files changed in a PR or selected workflow run.
+- Triggers: Manual `workflow_dispatch` or `workflow_call` from other workflows.
+- Key steps:
+  - Checkout repository with full history.
+  - Set up Python (matrix: 3.9, 3.10, 3.11) with pip cache.
+  - Determine whether to run selective tests or fall back to the full suite.
+  - Invoke `.github/scripts/detect_changed_tests.sh` to map changed source files to associated tests.
+  - Run `pytest` on the filtered list or entire `tests/` directory when needed.
+- Controls:
+  - Inputs `test_changed_only` and `enable_changed_files_detection` allow manual overrides.
+  - Falls back to full test run if no matching tests are detected.
 
 ### pre-commit.yml
 - Purpose: Enforce code style and basic static checks using pre-commit hooks.
