@@ -7,7 +7,7 @@ This PR introduces three GitHub Actions workflows to standardize CI for the repo
 - Triggers: `push` (branch: dev_CI), `pull_request` (into main), and manual `workflow_dispatch`.
 - Key steps:
   - Checkout repository.
-  - Set up Python (matrix: 3.9, 3.10, 3.11) with pip cache.
+  - Set up Python (matrix: 3.12, 3.13) with pip cache.
   - Install dependencies.
   - Run `pytest` with verbose output, excluding tests marked `slow`.
 - Stability:
@@ -19,7 +19,7 @@ This PR introduces three GitHub Actions workflows to standardize CI for the repo
 - Triggers: Manual `workflow_dispatch` or `workflow_call` from other workflows.
 - Key steps:
   - Checkout repository with full history.
-  - Set up Python (matrix: 3.9, 3.10, 3.11) with pip cache.
+  - Set up Python (matrix: 3.12, 3.13) with pip cache.
   - Determine whether to run selective tests or fall back to the full suite.
   - Invoke `.github/scripts/detect_changed_tests.sh` to map changed source files to associated tests.
   - Run `pytest` on the filtered list or entire `tests/` directory when needed.
