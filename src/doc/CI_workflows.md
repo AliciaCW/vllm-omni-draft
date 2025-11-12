@@ -4,36 +4,52 @@ This PR introduces three GitHub Actions workflows to standardize CI for the repo
 
 ### ci.yml
 - Purpose: Run the full test suite across multiple Python versions; default workflow for pushes and PRs.
-- Triggers: `push` (branch: dev_CI), `pull_request` (into main), and manual `workflow_dispatch`.
+- Triggers: 
+  - `push` to **all branches** (`branches: ["**"]`)
+  - `pull_request` (into main)
+  - Manual `workflow_dispatch`
 - Key steps:
   - Checkout repository.
+  - Free disk space (remove unnecessary toolchains, prune docker).
   - Set up Python (matrix: 3.12, 3.13) with pip cache.
-  - Install dependencies.
-  - Run `pytest` with verbose output, excluding tests marked `slow`.
+  - Install dependencies with `--no-cache-dir` to reduce disk usage.
+  - Run `pytest tests/ -v -m "not slow"` (excludes tests marked `slow`).
 - Stability:
   - `timeout-minutes: 30` to avoid hanging jobs.
   - `strategy.fail-fast: false` to allow all matrix runs to complete.
 
 ### ci-changed-files.yml
 - Purpose: Run targeted tests only for files changed in a PR or selected workflow run.
-- Triggers: Manual `workflow_dispatch` or `workflow_call` from other workflows.
+- Triggers: 
+  - Manual `workflow_dispatch` (with optional inputs)
+  - `workflow_call` from other workflows
 - Key steps:
-  - Checkout repository with full history.
+  - Checkout repository with `fetch-depth: 0` (full history needed for change detection).
+  - Free disk space (same cleanup as ci.yml).
   - Set up Python (matrix: 3.12, 3.13) with pip cache.
-  - Determine whether to run selective tests or fall back to the full suite.
-  - Invoke `.github/scripts/detect_changed_tests.sh` to map changed source files to associated tests.
-  - Run `pytest` on the filtered list or entire `tests/` directory when needed.
+  - Install dependencies with `--no-cache-dir`.
+  - Determine test scope based on inputs (`test_changed_only`, `enable_changed_files_detection`).
+  - If enabled, invoke `.github/scripts/detect_changed_tests.sh` to map changed source files to associated tests.
+  - Run `pytest` on filtered test files or fall back to full `tests/` directory.
 - Controls:
-  - Inputs `test_changed_only` and `enable_changed_files_detection` allow manual overrides.
-  - Falls back to full test run if no matching tests are detected.
+  - Inputs `test_changed_only` (default: 'true') and `enable_changed_files_detection` (default: 'true') allow manual overrides.
+  - Falls back to full test run if:
+    - Detection is disabled
+    - No matching tests are detected
+    - `test_changed_only` is set to 'false'
 
 ### pre-commit.yml
 - Purpose: Enforce code style and basic static checks using pre-commit hooks.
-- Triggers: `pull_request` and `push` to `main`.
+- Triggers: 
+  - `pull_request` (all PRs)
+  - `push` to `main` branch
 - Key steps:
   - Checkout repository.
-  - Set up Python 3.11 with pip cache.
-  - Run `pre-commit` across all files with `--hook-stage manual`.
+  - Set up Python 3.12 with pip cache.
+  - Run `pre-commit` with `--all-files --hook-stage manual` (checks all files, not just staged).
+- Concurrency:
+  - Uses concurrency groups to cancel in-progress runs on new commits.
+  - Cancels previous runs for pull requests.
 - Note: Requires a valid `.pre-commit-config.yaml` in the repository.
 
 ### automerge.yml
