@@ -20,8 +20,28 @@
   - `load_stage_configs_from_model`：返回可控的伪 `stage_configs` 列表（含 `engine_args`、`final_output`、`final_output_type`）。
   - `OmniStage`：替换为可观察的轻量Fake，实现 `set_engine`、`set_engine_outputs`、`process_engine_inputs` 与可配置属性 `final_output`。
   - `OmniStageLLM`：替换为轻量Fake，提供 `generate`（返回可迭代）即可，避免真实引擎初始化。
+- 辅助类：
+  - `_FakeEngineArgs`：模拟 `engine_args`，同时支持字典和对象属性访问
+  - `_FakeStageConfig`：模拟 `stage_config`，提供测试所需的配置结构
 
 ## 4. 测试替身类说明
+
+### `_FakeEngineArgs`（引擎参数替身）
+- **作用**：模拟 `engine_args` 对象，需要同时支持字典访问（`**kwargs`）和对象属性访问（`obj.attr`）
+- **实现**：
+  - 继承自 `dict`，支持字典操作
+  - 自动设置必需属性：`model_stage`、`engine_output_type`（如果不存在则设为 `None`）
+  - 将所有键值对同时设置为对象属性，支持 `obj.key` 访问方式
+  - 这样可以在 `OmniStageLLM(model=model, **stage_config.engine_args)` 中作为 `**kwargs` 解包，同时 `OmniStage` 也可以使用对象属性访问
+
+### `_FakeStageConfig`（阶段配置替身）
+- **作用**：模拟 `stage_config` 对象，提供测试所需的配置结构
+- **实现**：
+  - `engine_args`：转换为 `_FakeEngineArgs` 对象，支持字典和对象两种访问方式
+  - `final_output`：布尔值，控制是否作为最终输出
+  - `final_output_type`：最终输出类型（如 `"text"`）
+  - `stage_id`：阶段 ID（默认为 0）
+  - `_config_dict`：存储原始配置字典，用于 `_FakeStage.process_engine_inputs` 返回预设值
 
 ### `_FakeStage`（替代 `OmniStage`）
 - **作用**：替代真实的 `OmniStage`，避免加载真实引擎和模型权重
@@ -71,6 +91,8 @@
 - `OmniStageLLM` → `_FakeStageLLM` 类，避免真实引擎初始化
 
 ✅ **额外实现**：
+- `_FakeEngineArgs`：计划中未明确提及但实际需要的辅助类，用于模拟 `engine_args`，同时支持字典和对象属性访问
+- `_FakeStageConfig`：计划中未明确提及但实际需要的辅助类，用于模拟 `stage_config` 对象结构
 - `_FakeEngine`：计划中未明确提及但实际需要的内部类，用于 `_FakeStageLLM` 内部实现，提供 `generate` 迭代器接口
 - `_setup_engine_mocks(monkeypatch)`：辅助函数，统一设置引擎相关的 mocks，包括：
   - `LLMEngine.from_engine_args`：返回包含所有必要属性的 fake engine
