@@ -72,6 +72,15 @@
 
 ✅ **额外实现**：
 - `_FakeEngine`：计划中未明确提及但实际需要的内部类，用于 `_FakeStageLLM` 内部实现，提供 `generate` 迭代器接口
+- `_setup_engine_mocks(monkeypatch)`：辅助函数，统一设置引擎相关的 mocks，包括：
+  - `LLMEngine.from_engine_args`：返回包含所有必要属性的 fake engine
+  - `get_model_architecture` 和 `_get_model_architecture`：返回真实的 `FakeModelClass` 类（避免 `inspect.getsource` 问题）
+  - `try_create_mm_pooling_model_cls`：直接返回传入的类
+  - `_enable_processor_cache`：返回 `False`，避免设置 processor factories
+  - `get_io_processor`：返回 `None`，避免 IO processor 初始化
+- `mock_get_config` fixture（autouse=True）：自动 mock 模型加载相关函数，包括：
+  - `vllm.transformers_utils.config.get_config`：返回 fake config
+  - `transformers.utils.hub.cached_file` 和 `cached_files`：返回临时假配置文件，避免从 HuggingFace 下载
 
 ### 8.2 测试用例详细说明
 
@@ -80,13 +89,16 @@
 **测试目标**：验证当 `OmniLLM.__init__` 未传入 `stage_configs` 时，会自动调用 `load_stage_configs_from_model` 并正确初始化阶段列表。
 
 **测试步骤**：
-1. Mock `load_stage_configs_from_model` 返回两个相同的配置
-2. Mock `OmniStage` 和 `OmniStageLLM` 为 Fake 实现
-3. 创建 `OmniLLM(model="any")`，不传入 `stage_configs`
-4. 验证 `llm.stage_configs` 是列表且长度为 2
-5. 验证 `llm.stage_list` 长度为 2
-6. 验证每个 stage 都是 `_FakeStage` 实例
-7. 验证每个 stage 的 `engine` 都是 `_FakeStageLLM` 实例
+1. 删除模块缓存（`vllm_omni.entrypoints.utils`、`vllm_omni.entrypoints.omni_llm`、`vllm_omni.entrypoints.omni_stage`）以确保干净状态
+2. 调用 `_setup_engine_mocks(monkeypatch)` 设置通用的引擎 mocks
+3. Mock `load_stage_configs_from_model` 返回两个相同的配置（在定义处和导入处都 mock）
+4. Mock `OmniStage` 和 `OmniStageLLM` 为 Fake 实现
+5. 导入 `omni_llm_module` 并在模块内 patch `load_stage_configs_from_model`、`OmniStage` 和 `OmniStageLLM`（确保 mock 在模块导入后生效）
+6. 创建 `OmniLLM(model="any")`，不传入 `stage_configs`
+7. 验证 `llm.stage_configs` 是列表且长度为 2
+8. 验证 `llm.stage_list` 长度为 2
+9. 验证每个 stage 都是 `_FakeStage` 实例
+10. 验证每个 stage 的 `engine` 都是 `_FakeStageLLM` 实例
 
 **对应实现逻辑**（`omni_llm.py:30-36`）：
 ```python
@@ -110,9 +122,13 @@ self.initialize_stages(model)  # 创建 OmniStage 并设置 engine
 **测试目标**：验证 `generate` 方法在 `sampling_params_list` 长度与 `stage_list` 长度不匹配时抛出 `ValueError`。
 
 **测试步骤**：
-1. 创建包含 1 个 stage 的 `OmniLLM`
-2. 调用 `generate` 时传入空的 `sampling_params_list=[]`
-3. 验证抛出 `ValueError`
+1. 删除模块缓存以确保干净状态
+2. 调用 `_setup_engine_mocks(monkeypatch)` 设置通用的引擎 mocks
+3. Mock `load_stage_configs_from_model` 返回 1 个配置
+4. Mock `OmniStage` 和 `OmniStageLLM` 为 Fake 实现
+5. 创建包含 1 个 stage 的 `OmniLLM`
+6. 调用 `generate` 时传入空的 `sampling_params_list=[]`
+7. 验证抛出 `ValueError`
 
 **对应实现逻辑**（`omni_llm.py:57-61`）：
 ```python
@@ -138,14 +154,20 @@ if len(sampling_params_list) != len(self.stage_list):
 - `final_output=True` 的阶段正确聚合到最终输出
 
 **测试步骤**：
-1. 创建包含 2 个 stage 的配置，都设置 `final_output=True`
-2. 为每个 stage 注入不同的 Fake 引擎输出（`s0` 和 `s1`）
-3. 调用 `generate` 传入 1 个 prompt 和 2 个 sampling_params
-4. 验证返回 2 个 `OmniRequestOutput`（因为两个 stage 都是 final_output）
-5. 验证 stage 0 的 `_outputs` 包含 `[{"stage": 0, "text": "s0"}]`
-6. 验证 stage 1 的 `_outputs` 包含 `[{"stage": 1, "text": "s1"}]`
-7. 验证 stage 0 的 engine 接收了原始 `prompts`
-8. 验证 stage 1 的 engine 被调用（通过 `hasattr` 检查 `_last_prompts`）
+1. 删除模块缓存以确保干净状态
+2. 调用 `_setup_engine_mocks(monkeypatch)` 设置通用的引擎 mocks
+3. 创建包含 2 个 stage 的配置，都设置 `final_output=True`，stage 1 的 `processed_input` 设置为 `["processed-for-stage-1"]`
+4. Mock `load_stage_configs_from_model` 返回这两个配置
+5. Mock `OmniStage` 和 `OmniStageLLM` 为 Fake 实现
+6. 导入 `omni_llm_module` 并在模块内 patch 相关引用
+7. 创建包含 2 个 stage 的 `OmniLLM`
+8. 为每个 stage 注入不同的 Fake 引擎输出（`s0` 和 `s1`），直接替换 `llm.stage_list[i].engine`
+9. 调用 `generate` 传入 1 个 prompt 和 2 个 sampling_params
+10. 验证返回 2 个 `OmniRequestOutput`（因为两个 stage 都是 final_output）
+11. 验证 stage 0 的 `_outputs` 包含 `[{"stage": 0, "text": "s0"}]`
+12. 验证 stage 1 的 `_outputs` 包含 `[{"stage": 1, "text": "s1"}]`
+13. 验证 stage 0 的 engine 接收了原始 `prompts`（通过 `s0._fake_engine._last_prompts`）
+14. 验证 stage 1 的 engine 被调用（通过 `hasattr` 检查 `_last_prompts`）
 
 **对应实现逻辑**（`omni_llm.py:62-79`）：
 ```python
@@ -174,9 +196,15 @@ for stage_id, stage in enumerate(self.stage_list):
 **测试目标**：验证当所有 stage 的 `final_output=False` 时，`generate` 返回空列表。
 
 **测试步骤**：
-1. 创建包含 2 个 stage 的配置，都设置 `final_output=False`
-2. 调用 `generate` 传入 prompts 和 sampling_params
-3. 验证返回空列表 `[]`
+1. 删除模块缓存以确保干净状态
+2. 调用 `_setup_engine_mocks(monkeypatch)` 设置通用的引擎 mocks
+3. 创建包含 2 个 stage 的配置，都设置 `final_output=False`
+4. Mock `load_stage_configs_from_model` 返回这两个配置
+5. Mock `OmniStage` 和 `OmniStageLLM` 为 Fake 实现
+6. 导入 `omni_llm_module` 并在模块内 patch 相关引用
+7. 创建包含 2 个 stage 的 `OmniLLM`
+8. 调用 `generate` 传入 prompts 和 2 个 sampling_params
+9. 验证返回空列表 `[]`
 
 **对应实现逻辑**（`omni_llm.py:71-78`）：
 ```python
@@ -196,9 +224,13 @@ if hasattr(stage, "final_output") and stage.final_output:
 **测试目标**：验证当 `sampling_params_list=None` 时，`generate` 会抛出异常。
 
 **测试步骤**：
-1. 创建包含 1 个 stage 的 `OmniLLM`
-2. 调用 `generate` 时传入 `sampling_params_list=None`
-3. 验证抛出异常（`TypeError` 或 `ValueError`）
+1. 删除模块缓存以确保干净状态
+2. 调用 `_setup_engine_mocks(monkeypatch)` 设置通用的引擎 mocks
+3. Mock `load_stage_configs_from_model` 返回 1 个配置
+4. Mock `OmniStage` 和 `OmniStageLLM` 为 Fake 实现
+5. 创建包含 1 个 stage 的 `OmniLLM`
+6. 调用 `generate` 时传入 `sampling_params_list=None`
+7. 验证抛出异常（`TypeError` 或 `ValueError`，使用 `pytest.raises(Exception)` 捕获）
 
 **对应实现逻辑**（`omni_llm.py:57`）：
 ```python
@@ -219,7 +251,7 @@ if len(sampling_params_list) != len(self.stage_list):  # 如果 sampling_params_
 **`fake_stage_config` 结构**：
 ```python
 {
-    "engine_args": {"model": "fake-model"},  # ✅ 正确：对应 stage_config.engine_args
+    "engine_args": {},                        # ✅ 正确：对应 stage_config.engine_args（空字典，因为 model 单独传递）
     "final_output": True,                     # ✅ 正确：对应 stage_config.final_output
     "final_output_type": "text",             # ✅ 正确：对应 stage_config.final_output_type
     "processed_input": ["processed-by-stage"], # ✅ 正确：用于 _FakeStage.process_engine_inputs 返回
@@ -227,7 +259,7 @@ if len(sampling_params_list) != len(self.stage_list):  # 如果 sampling_params_
 ```
 
 **验证**：
-- ✅ `engine_args` 会被解包传给 `OmniStageLLM(model=model, **stage_config.engine_args)`
+- ✅ `engine_args` 会被解包传给 `OmniStageLLM(model=model, **stage_config.engine_args)`（注意：`model` 参数单独传递，不在 `engine_args` 中）
 - ✅ `final_output` 和 `final_output_type` 会被 `_FakeStage` 读取并设置
 - ✅ `processed_input` 是测试辅助字段，用于验证 `process_engine_inputs` 调用链
 
@@ -242,7 +274,26 @@ if len(sampling_params_list) != len(self.stage_list):  # 如果 sampling_params_
 | `stage.process_engine_inputs(stage_list, prompts)` | `stage.process_engine_inputs(stage_list, prompt)`       | ✅ 正确（参数名略有不同但不影响）       |
 | `stage.engine.generate(prompts, sampling_params)`  | `stage.engine.generate(prompts, sampling_params)`       | ✅ 正确                                 |
 
-#### 8.3.3 潜在问题检查
+#### 8.3.3 Mock 设置策略
+
+**关键实现细节**：
+
+1. **模块缓存清理**：
+   - 在设置 mocks 之前，先删除 `sys.modules` 中的相关模块缓存
+   - 确保模块重新导入时能使用新的 mocks
+   - 涉及的模块：`vllm_omni.entrypoints.utils`、`vllm_omni.entrypoints.omni_llm`、`vllm_omni.entrypoints.omni_stage`
+
+2. **Mock 设置顺序**：
+   - 先调用 `_setup_engine_mocks(monkeypatch)` 设置通用的引擎相关 mocks
+   - 然后 mock `load_stage_configs_from_model`、`OmniStage`、`OmniStageLLM`
+   - 导入 `omni_llm_module` 后，再次在模块内 patch 这些引用（确保模块内导入的引用也被替换）
+
+3. **为什么需要双重 Mock**：
+   - 在模块定义处 mock（如 `vllm_omni.entrypoints.omni_stage.OmniStage`）：影响新导入的模块
+   - 在模块导入后 mock（如 `omni_llm_module.OmniStage`）：影响已导入模块内的引用
+   - 这样可以确保无论代码从哪个位置引用这些类，都能使用 mock 版本
+
+#### 8.3.4 潜在问题检查
 
 1. **`sampling_params_list=None` 的处理**：
    - 实际代码：`len(sampling_params_list)` 在 `None` 时会抛出 `TypeError`
@@ -257,18 +308,29 @@ if len(sampling_params_list) != len(self.stage_list):  # 如果 sampling_params_
    - 实际实现返回 `List[Union[OmniTokensPrompt, TextPrompt]]`
    - `_FakeStage` 返回预设的 `_processed_input`（列表），类型兼容
 
+4. **模型加载相关的 Mock**：
+   - `mock_get_config` fixture（autouse=True）自动 mock 所有测试中的模型加载函数
+   - `_setup_engine_mocks` 统一设置引擎初始化相关的 mocks
+   - 这些 mocks 避免了真实的模型权重加载和引擎初始化
+
 ### 8.4 总结
 
 ✅ **所有测试用例实现正确**：
-- Mock 替换机制正确
+- Mock 替换机制正确，包括模块定义处和模块导入后的双重 mock
 - 函数调用和参数传递正确
 - Fake 配置结构符合实际需求
 - 测试覆盖了关键路径和边界情况
+- 通过 `_setup_engine_mocks` 和 `mock_get_config` fixture 统一管理 mocks，避免重复代码
 
 ✅ **无臆想部分**：
 - 所有 Mock 都基于实际代码接口
 - 所有断言都验证实际行为
 - 没有测试不存在的功能
+
+✅ **Mock 策略优化**：
+- 使用辅助函数 `_setup_engine_mocks` 统一设置引擎相关 mocks，提高代码复用性
+- 使用 `autouse=True` 的 fixture `mock_get_config` 自动处理模型加载相关的 mocks
+- 在模块导入后再次 patch 模块内引用，确保 mock 完全生效
 
 ⚠️ **代码改进建议**（非测试问题）：
 - `generate` 方法应该先检查 `sampling_params_list is None`，再检查长度

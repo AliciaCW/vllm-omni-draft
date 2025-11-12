@@ -31,7 +31,6 @@
     - [依赖配置](#依赖配置)
     - [Black 配置](#black-配置)
     - [isort 配置](#isort-配置)
-    - [Flake8 配置](#flake8-配置)
     - [Ruff 配置](#ruff-配置)
     - [Mypy 配置](#mypy-配置)
     - [Pytest 配置](#pytest-配置)
@@ -768,7 +767,6 @@ dev = [
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "isort>=5.12.0",
-    "flake8>=6.0.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
 ]
@@ -782,7 +780,7 @@ dev = [
   - `pytest`: 测试框架
   - `pytest-asyncio`: 异步测试支持
   - `pytest-cov`: 代码覆盖率
-  - `black`, `isort`, `flake8`: 代码格式化和检查
+  - `black`, `isort`: 代码格式化和检查
   - `mypy`: 类型检查
   - `pre-commit`: Git hooks 管理
 
@@ -842,23 +840,6 @@ known_first_party = ["vllm_omni"]
   - **为什么**: 正确排序导入（标准库、第三方、第一方、本地）
   - **好处**: 清晰的导入顺序
 
-### Flake8 配置
-
-```toml
-[tool.flake8]
-max-line-length = 88
-extend-ignore = ["E203", "W503"]
-```
-- **`max-line-length = 88`**: 
-  - **作用**: 行长度限制
-  - **为什么**: 与 black 保持一致
-  - **好处**: 避免冲突
-- **`extend-ignore = ["E203", "W503"]`**: 
-  - **作用**: 忽略特定规则
-  - **为什么**: 
-    - E203: 与 black 冲突（冒号前空格）
-    - W503: 与 black 冲突（二元运算符前换行）
-  - **好处**: 允许 black 的格式化风格
 
 ### Ruff 配置
 
