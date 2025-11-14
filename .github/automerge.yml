@@ -48,7 +48,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_METHOD: SQUASH
-          UPDATE_METHOD: none
+          UPDATE_METHOD: rebase
           BLOCKING_LABELS: do-not-merge, wip
           REQUIRED_STATUS_CHECKS: true
           REQUIRED_APPROVALS: 1
