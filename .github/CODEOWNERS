@@ -4,7 +4,7 @@
 
 # Default owners (fallback reviewers for all files)
 # later, we can add more reviewers here
-* @
+* @congw729
 
 # Assign reviewers by directory
 /.github/ @owner1
