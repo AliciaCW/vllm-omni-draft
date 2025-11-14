@@ -31,3 +31,4 @@ jobs:
           UPDATE_METHOD: rebase
           REQUIRED_LABELS: automerge
           REQUIRED_STATUS_CHECKS: true
+          REQUIRED_APPROVALS: 1
