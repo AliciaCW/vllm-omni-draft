@@ -29,6 +29,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_METHOD: SQUASH
           UPDATE_METHOD: rebase
-          REQUIRED_LABELS: automerge
+          BLOCKING_LABELS: do-not-merge, wip
           REQUIRED_STATUS_CHECKS: true
           REQUIRED_APPROVALS: 1
