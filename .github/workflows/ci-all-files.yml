@@ -1,4 +1,4 @@
-name: CI Changed Files
+name: CI All Files
 
 on:
   workflow_dispatch:
