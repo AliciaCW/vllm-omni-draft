@@ -23,13 +23,24 @@ jobs:
   automerge:
     runs-on: ubuntu-latest
     steps:
+      - name: Add automerge label to opened PRs
+        if: github.event.action == 'opened'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: ['automerge']
+            })
+      
       - name: Auto Merge
         uses: pascalgn/automerge-action@v0.16.4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_METHOD: SQUASH
           UPDATE_METHOD: rebase
-          REQUIRED_LABELS: ""
           BLOCKING_LABELS: do-not-merge, wip
           REQUIRED_STATUS_CHECKS: true
           REQUIRED_APPROVALS: 1
