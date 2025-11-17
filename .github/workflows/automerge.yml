@@ -45,8 +45,8 @@ jobs:
         uses: pascalgn/automerge-action@v0.16.4
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          MERGE_METHOD: SQUASH
-          UPDATE_METHOD: rebase
+          MERGE_METHOD: squash
+          UPDATE_METHOD: squash
           BLOCKING_LABELS: do-not-merge, wip
           REQUIRED_STATUS_CHECKS: true
           REQUIRED_APPROVALS: 1
