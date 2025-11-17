@@ -1,24 +1,14 @@
 name: Auto Merge PR
 
 on:
-  pull_request:
+  pull_request_target:
     types:
       - labeled
       - synchronize
       - opened
       - ready_for_review
       - reopened
-  pull_request_target:
-    types:
-      - opened
-      - ready_for_review
-      - reopened
-  pull_request_review:
-    types:
-      - submitted
-  check_suite:
-    types:
-      - completed
+      - edited
 
 permissions:
   contents: write
@@ -41,11 +31,7 @@ jobs:
             })
 
   automerge:
-    if: >
-      (github.event_name == 'pull_request_review' &&
-       github.event.review.state == 'approved') ||
-      (github.event_name == 'check_suite' &&
-       github.event.check_suite.conclusion == 'success')
+    if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App token
@@ -64,3 +50,5 @@ jobs:
           BLOCKING_LABELS: do-not-merge, wip
           REQUIRED_STATUS_CHECKS: true
           REQUIRED_APPROVALS: 1
+          MERGE_RETRY_SLEEP: 60000
+          MERGE_RETRIES: 360
