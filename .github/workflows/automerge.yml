@@ -21,26 +21,6 @@ permissions:
   pull-requests: write
 
 jobs:
-  label:
-    if: >
-      (github.event_name == 'pull_request_target' &&
-       github.event.action == 'labeled') ||
-      (github.event_name == 'pull_request_review' &&
-       github.event.review.state == 'approved') ||
-      (github.event_name == 'check_suite' &&
-       github.event.check_suite.conclusion == 'success')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Add automerge label to PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              labels: ['automerge']
-            })
 
   automerge:
     if: github.event_name == 'pull_request_target'
